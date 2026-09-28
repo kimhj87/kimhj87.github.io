@@ -133,6 +133,12 @@ revoke execute on function public.is_active() from public, anon;
 grant execute on function public.is_admin() to authenticated;
 grant execute on function public.is_active() to authenticated;
 
+-- 일시정지 방지용 (GitHub Actions가 매일 호출)
+create or replace function public.ping() returns text
+language sql stable as $$ select 'ok' $$;
+revoke all on function public.ping() from public;
+grant execute on function public.ping() to anon, authenticated;
+
 -- ---------- 7. 보안 규칙 (RLS) ----------
 alter table public.profiles     enable row level security;
 alter table public.reports      enable row level security;

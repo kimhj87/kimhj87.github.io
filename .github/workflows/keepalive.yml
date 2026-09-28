@@ -1,0 +1,45 @@
+# Supabase 무료 플랜은 7일 동안 접속이 없으면 일시정지됩니다.
+# 매일 한 번 서버를 가볍게 호출해서 정지되지 않게 합니다. (데이터는 건드리지 않음)
+# 그리고 GitHub는 60일간 커밋이 없으면 이 예약 작업을 꺼 버리므로, 매주 월요일에 날짜 파일을 갱신해 둡니다.
+name: Supabase 유지
+
+on:
+  schedule:
+    - cron: '17 21 * * *'   # 매일 06:17 (한국 시간)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Supabase 호출
+        env:
+          URL: https://rtydbopidlnhlbrcdudl.supabase.co
+          KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ0eWRib3BpZGxuaGxicmNkdWRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA1OTQyNDUsImV4cCI6MjEwNjE3MDI0NX0.f2idjTYtJWzQbSJcgvoamqH9J6PxfSqJbaYpGFUig5M
+        run: |
+          out=$(curl -fsS -X POST "$URL/rest/v1/rpc/ping" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
+            -H "Content-Type: application/json" -d '{}')
+          echo "응답: $out"
+          [ "$out" = '"ok"' ]
+
+      - name: 저장소 활동 기록 (월요일만)
+        if: ${{ github.event_name == 'schedule' }}
+        run: |
+          if [ "$(date -u +%u)" = "1" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            date -u +%F > .github/last-ping
+            git add .github/last-ping
+            git commit -m "keepalive: $(date -u +%F)" && git push
+          else
+            echo "월요일이 아니라 건너뜀"
+          fi
+        env:
+          GIT_TERMINAL_PROMPT: 0
+        continue-on-error: true
