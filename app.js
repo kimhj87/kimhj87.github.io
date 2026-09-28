@@ -197,7 +197,7 @@ async function loadMyReports() {
         <span class="meta"><span>제출일 ${esc(dateKo(r.report_date))}</span>${fc ? `<span class="pill ad">첨부 ${fc}</span>` : ''}</span>
         <span class="snip">${esc((r.content || '').slice(0, 200)) || '<span class="mu">내용 없음</span>'}</span></span></button>`;
   }).join('') : `<div class="card empty"><span class="state-ic"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span>
-      <h2 class="serif">아직 쓴 보고서가 없습니다</h2><p class="mu m0">오른쪽 위 <b>작성하기</b>를 눌러 첫 보고서를 써 보세요.</p></div>`;
+      <h2 class="display">아직 쓴 보고서가 없습니다</h2><p class="mu m0">오른쪽 위 <b>작성하기</b>를 눌러 첫 보고서를 써 보세요.</p></div>`;
 }
 $('#myreps').addEventListener('click', e => {
   const b = e.target.closest('[data-open]'); if (!b) return;
@@ -290,7 +290,7 @@ function openFullView(r, files, mode) {
       ${mode === 'staff' ? '<span class="row" style="gap:6px"><button class="btn ghost sm" type="button" id="fvdel">삭제</button><button class="btn sm" type="button" id="fved">수정하기</button></span>' : '<span class="mu">보고서</span>'}</div>
     <article class="fvdoc">
       <div class="by"><span class="avatar">${esc(initial(p.name))}</span><div><b>${esc(p.name || '')}</b><div class="mu">@${esc(p.login_id || '')}</div></div></div>
-      <h1 class="serif">${esc(r.title || '(제목 없음)')}</h1>
+      <h1 class="display">${esc(r.title || '(제목 없음)')}</h1>
       <div class="fvmeta"><div><span>제출일</span><b>${esc(dateKo(r.report_date))} (${wday(r.report_date)})</b></div>
         <div><span>첨부</span><b>${files.length}개</b></div></div>
       <section class="fvsec"><h2>이번 주 한 일</h2><div class="rep">${esc(r.content) || '<span class="mu">—</span>'}</div></section>
@@ -384,7 +384,7 @@ let allReps = [], allFiles = [];
 function dayTitle(d) {
   const t = today(), label = `${Number(d.slice(5, 7))}월 ${Number(d.slice(8))}일 (${wday(d)})`;
   const tag = d === t ? '오늘' : d === addDays(t, -1) ? '어제' : '';
-  return `<span>${(d.slice(0, 4) !== t.slice(0, 4) ? d.slice(0, 4) + '년 ' : '') + label}</span>` + (tag ? `<span class="pill gold">${tag}</span>` : '');
+  return `<span>${(d.slice(0, 4) !== t.slice(0, 4) ? d.slice(0, 4) + '년 ' : '') + label}</span>` + (tag ? `<span class="pill ac">${tag}</span>` : '');
 }
 async function loadAR() {
   await loadPeople();
@@ -413,7 +413,7 @@ function renderAR() {
   reps.forEach(r => { (days[r.report_date] ||= []).push(r); });   // 직원이 지정한 제출 날짜별로 묶음
   const order = Object.keys(days).sort().reverse();
   repMap = {};
-  if (!order.length) { $('#arep').innerHTML = '<div class="card empty"><h2 class="serif">아직 올라온 보고서가 없습니다</h2><p class="mu m0">직원이 보고서를 제출하면 여기에 제출 날짜별로 모입니다.</p></div>'; return; }
+  if (!order.length) { $('#arep').innerHTML = '<div class="card empty"><h2 class="display">아직 올라온 보고서가 없습니다</h2><p class="mu m0">직원이 보고서를 제출하면 여기에 제출 날짜별로 모입니다.</p></div>'; return; }
   $('#arep').innerHTML = order.map(d => {
     const list = days[d].sort((a, b) => (a.submitted_at < b.submitted_at ? 1 : -1));
     return `<section class="day"><h3 class="dayh">${dayTitle(d)}<span class="mu">${list.length}건</span></h3>

@@ -5,55 +5,71 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>주간보고</title>
 <meta name="robots" content="noindex, nofollow">
-<meta name="theme-color" content="#1b2a4a">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231b2a4a'/%3E%3Cpath d='M16 20l7 24 9-18 9 18 7-24' fill='none' stroke='%23c9ad74' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%231d1d1f'/%3E%3Cpath d='M17 21l6.5 22 8.5-16 8.5 16L47 21' fill='none' stroke='%23fff' stroke-width='5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@600;700&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header class="top"><div class="in">
   <a class="brand" href="#" id="home" aria-label="처음 화면">
-    <span class="mark" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M16 20l7 24 9-18 9 18 7-24"/></svg></span>
-    <span class="bt"><span id="brand">주간보고</span><small id="sub">WEEKLY REPORT</small></span>
+    <span class="mark" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M17 21l6.5 22 8.5-16 8.5 16L47 21"/></svg></span>
+    <span id="brand">주간보고</span>
   </a>
-  <button class="btn write" id="wbtn" type="button" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span>작성하기</span></button>
-  <button class="acct" id="acct" type="button" aria-label="계정">
-    <span class="av" id="acctav"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></span>
-    <span id="acctl">로그인</span>
-  </button>
+  <div class="topr">
+    <button class="btn write" id="wbtn" type="button" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>작성하기</span></button>
+    <button class="acct" id="acct" type="button" aria-label="계정">
+      <span class="av" id="acctav"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></span>
+      <span id="acctl">로그인</span>
+    </button>
+  </div>
 </div></header>
 
 <main class="wrap">
-  <div class="card" id="boot"><div class="loading"><span></span><span></span><span></span></div></div>
+  <div id="boot"><div class="loading"><span></span><span></span><span></span></div></div>
 
   <!-- 로그인 전 첫 화면 -->
   <section class="hero" id="lock" hidden>
-    <div class="hero-copy">
-      <p class="eyebrow">사내 업무 보고</p>
-      <h1 class="serif">한 주의 일을,<br>한 곳에 남깁니다.</h1>
-      <p class="lead">제목과 날짜, 한 주 동안 한 일, 첨부 파일까지 한 번에 제출하고, 대표는 날짜별로 모아서 확인합니다.</p>
-      <ul class="feats">
-        <li><span class="fi"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10"/></svg></span><div><b>한 화면에서 작성</b><span>제목 · 제출 날짜 · 이번 주 한 일</span></div></li>
-        <li><span class="fi"><svg viewBox="0 0 24 24"><path d="M21 12.5 12.6 21a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2L10 18.4a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg></span><div><b>파일과 함께 제출</b><span>한글 · PDF · 엑셀 · 이미지, 파일당 50MB</span></div></li>
-        <li><span class="fi"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg></span><div><b>날짜별로 한눈에</b><span>대표 화면에서 모아 보고 엑셀로 저장</span></div></li>
-      </ul>
-    </div>
-    <div class="card hero-card">
-      <h2 class="serif">시작하기</h2>
-      <p class="mu m0">초대받은 직원만 이용할 수 있습니다. 가입 후 대표가 승인하면 바로 보고서를 쓸 수 있습니다.</p>
+    <p class="eyebrow">사내 업무 보고</p>
+    <h1 class="display xl">한 주의 일을,<br>한 곳에.</h1>
+    <p class="lead">제목과 날짜, 이번 주 한 일, 첨부 파일까지 한 번에 제출합니다. <br class="wide">대표는 날짜별로 모아서 확인하고 엑셀로 저장합니다.</p>
+    <div class="cta">
       <button class="btn lg" id="lockin" type="button">로그인</button>
-      <button class="btn ghost lg" id="locksu" type="button">회원가입</button>
-      <p class="fine">가입할 때는 이름, 아이디, 비밀번호만 받습니다.</p>
+      <button class="tlink" id="locksu" type="button">회원가입 <span aria-hidden="true">›</span></button>
     </div>
+
+    <div class="showcase" aria-hidden="true">
+      <div class="mock">
+        <div class="mock-top"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <div class="mock-body">
+          <div class="mock-side">
+            <div class="mline w60"></div><div class="mline w40 on"></div><div class="mline w52"></div><div class="mline w36"></div>
+          </div>
+          <div class="mock-main">
+            <div class="mock-title"></div>
+            <div class="mock-meta"><span></span><span></span></div>
+            <div class="mline w100"></div><div class="mline w90"></div><div class="mline w76"></div>
+            <div class="mock-file"><span class="mock-ext">PDF</span><span class="mline w44"></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="float f1"><span class="chk">✓</span><span>제출 완료</span></div>
+      <div class="float f2"><b>3</b><span>이번 주 제출</span></div>
+    </div>
+
+    <ul class="feats">
+      <li><span class="fi"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h9"/></svg></span><b>한 화면에서 작성</b><span>제목, 제출 날짜, 이번 주 한 일을 한 번에 씁니다.</span></li>
+      <li><span class="fi"><svg viewBox="0 0 24 24"><path d="M21 12.5 12.6 21a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2L10 18.4a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg></span><b>파일과 함께 제출</b><span>한글, PDF, 엑셀, 이미지를 파일당 50MB까지 첨부합니다.</span></li>
+      <li><span class="fi"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span><b>날짜별로 한눈에</b><span>대표 화면에서 날짜별로 모아 보고, 엑셀로 내려받습니다.</span></li>
+    </ul>
+    <p class="fine">초대받은 직원만 이용할 수 있습니다. 가입은 이름, 아이디, 비밀번호만 받습니다.</p>
   </section>
 
   <section class="card state" id="wait" hidden>
     <span class="state-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
-    <h2 class="serif">가입 신청이 접수되었습니다</h2>
+    <h2 class="display">가입 신청이 접수되었습니다</h2>
     <p class="mu m0">대표가 승인하면 주간보고를 쓸 수 있습니다. 승인 후 새로고침하세요.</p>
     <div class="row center-row"><button class="btn" id="reload" type="button">새로고침</button><button class="btn ghost" id="waitout" type="button">로그아웃</button></div>
   </section>
@@ -62,7 +78,7 @@
   <div id="staffApp" class="stack" hidden>
     <section id="slist" class="stack">
       <div class="phead">
-        <div><p class="eyebrow">내 보고서</p><h1 class="serif" id="shello">주간보고</h1></div>
+        <div><p class="eyebrow">내 보고서</p><h1 class="display" id="shello">주간보고</h1></div>
         <div class="stats" id="sstats"></div>
       </div>
       <div id="myreps" class="rlist"></div>
@@ -70,7 +86,7 @@
 
     <section id="swrite" class="stack" hidden>
       <div class="phead">
-        <div><button class="back" id="wback" type="button">← 내 보고서</button><h1 class="serif" id="wtitle">보고서 작성</h1></div>
+        <div><button class="back" id="wback" type="button"><span aria-hidden="true">‹</span> 내 보고서</button><h1 class="display" id="wtitle">보고서 작성</h1></div>
       </div>
       <div class="card form">
         <div class="fields">
@@ -83,7 +99,7 @@
             <div class="files" id="myfiles"></div>
             <div class="files" id="pending"></div>
             <span class="mu" id="nofile">첨부한 파일이 없습니다.</span>
-            <label class="btn ghost filebtn" for="ff"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>파일 추가</label><input type="file" id="ff" multiple hidden>
+            <label class="btn ghost sm filebtn" for="ff"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>파일 추가</label><input type="file" id="ff" multiple hidden>
           </div>
         </div>
         <div class="submitbar"><span class="mu" id="fprog"></span><button class="btn lg" id="save" type="button">제출하기</button></div>
@@ -94,14 +110,14 @@
   <!-- 대표 화면 -->
   <div id="adminApp" class="stack" hidden>
     <div class="phead">
-      <div><p class="eyebrow">대표</p><h1 class="serif">주간보고 현황</h1></div>
+      <div><p class="eyebrow">대표</p><h1 class="display">주간보고 현황</h1></div>
+      <nav class="tabs"><button data-t="arp" class="on" type="button">주간보고</button><button data-t="ast" type="button">직원 관리<span class="badge" id="pendb" hidden></span></button></nav>
     </div>
     <div class="tiles" id="atiles"></div>
-    <nav class="tabs"><button data-t="arp" class="on" type="button">주간보고</button><button data-t="ast" type="button">직원 관리<span class="badge" id="pendb" hidden></span></button></nav>
     <section id="arp" class="stack">
       <div class="toolbar">
         <div><b>제출 날짜별</b> <span class="mu" id="arsum"></span></div>
-        <div class="row" style="gap:8px"><select id="arf" class="auto" aria-label="직원 선택"><option value="">전체 직원</option></select><button class="btn ghost" id="arx" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>엑셀 다운로드</button></div>
+        <div class="row" style="gap:8px"><select id="arf" class="auto" aria-label="직원 선택"><option value="">전체 직원</option></select><button class="btn ghost" id="arx" type="button"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>엑셀 다운로드</button></div>
       </div>
       <div id="arep" class="stack"></div>
     </section>
@@ -109,7 +125,7 @@
   </div>
 </main>
 
-<footer class="foot-note" id="footer"><span id="fname">주간보고</span> · 사내 전용</footer>
+<footer class="foot-note"><span id="fname">주간보고</span> · 사내 전용</footer>
 
 <div class="fullv" id="fv" hidden><div class="fvin" id="fvb"></div></div>
 <div class="ov" id="ov" hidden><div class="sheet" id="mb" role="dialog" aria-modal="true"></div></div>
