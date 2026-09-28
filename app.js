@@ -74,7 +74,7 @@ function askConfirm(msg, label = '확인', danger = false) {
     b.onclick = () => done(true); $('#cfno').onclick = () => done(false);
   });
 }
-function show(id) { ['boot', 'lock', 'wait', 'staffApp', 'adminApp'].forEach(k => ($('#' + k).hidden = k !== id)); }
+function show(id) { ['boot', 'lock', 'wait', 'staffApp', 'adminApp', 'board'].forEach(k => ($('#' + k).hidden = k !== id)); }
 function fatal(t) { $('#boot').innerHTML = '<span>' + esc(t) + '</span>'; show('boot'); }
 
 /* ---------- 설정 확인 ---------- */
@@ -84,7 +84,7 @@ if (SUPABASE_URL.includes('YOUR-') || SUPABASE_ANON_KEY.includes('YOUR-')) {
 }
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-let me = null, curWeek, people = [], fileMap = {}, repMap = {};
+let me = null, curWeek, people = [], fileMap = {}, repMap = {}, curView = 'reports';
 const nm = id => (people.find(p => p.id === id) || {}).name || '(알 수 없음)';
 
 /* ---------- 로그인 · 회원가입 ---------- */
@@ -137,10 +137,16 @@ function showSignup() {
     closeModal(); await enter(); toast('가입 신청을 보냈습니다');
   };
 }
-async function logout() { closeModal(); await sb.auth.signOut(); me = null; renderHeader(); show('lock'); toast('로그아웃했습니다'); }
+async function logout() { closeModal(); await sb.auth.signOut(); me = null; curView = 'reports'; renderHeader(); show('lock'); toast('로그아웃했습니다'); }
 
 function renderHeader() {
-  $('#wbtn').hidden = !(me && me.role !== 'admin' && me.approved);
+  const active = !!(me && (me.role === 'admin' || me.approved));
+  $('#nav').hidden = !active; document.body.classList.toggle('hasnav', active);
+  $('#navrep').textContent = me && me.role === 'admin' ? '주간보고' : '내 보고서';
+  $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.v === curView));
+  const canWrite = active && (curView === 'board' || me.role !== 'admin');
+  $('#wbtn').hidden = !canWrite;
+  $('#wbtn span').textContent = curView === 'board' ? '글쓰기' : '작성하기';
   $('#acctl').textContent = me ? (me.role === 'admin' ? '대표 · ' + me.name : me.name) : '로그인';
   $('#acctav').innerHTML = me ? esc(initial(me.name)) : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>';
 }
@@ -153,7 +159,7 @@ $('#acct').onclick = () => {
   $('#lo').onclick = logout;
 };
 $('#lockin').onclick = showLogin;
-$('#home').onclick = e => { e.preventDefault(); closeFullView(); if (me && me.role !== 'admin' && me.approved && !$('#swrite').hidden) $('#wback').click(); else window.scrollTo(0, 0); };
+$('#home').onclick = e => { e.preventDefault(); closeFullView(); if (me && (me.role === 'admin' || me.approved)) goView('reports'); else window.scrollTo(0, 0); };
 $('#locksu').onclick = showSignup;
 $('#reload').onclick = () => location.reload();
 $('#waitout').onclick = logout;
@@ -162,10 +168,10 @@ async function enter() {
   const { data: { user } } = await sb.auth.getUser();
   if (!user) { me = null; renderHeader(); return show('lock'); }
   me = ok(await sb.from('profiles').select('*').eq('id', user.id).single());
-  renderHeader();
+  if (me.role !== 'admin' && !me.approved) { curView = 'reports'; renderHeader(); return show('wait'); }
+  curView = 'reports'; renderHeader();
   if (me.role === 'admin') { show('adminApp'); return guard(loadAR); }
-  if (!me.approved) return show('wait');
-  show('staffApp'); showStaff('list'); renderHeader(); guard(loadMyReports);
+  show('staffApp'); showStaff('list'); guard(loadMyReports);
 }
 
 /* ---------- 탭 ---------- */
@@ -226,7 +232,7 @@ async function loadMyFiles() {   // 수정 중 기존 파일을 지웠을 때 �
   curFiles = ok(await sb.from('report_files').select('*').eq('report_id', curRep.id).order('uploaded_at'));
   renderAttach();
 }
-$('#wbtn').onclick = () => { if (me && me.role !== 'admin' && me.approved) { closeFullView(); openWrite(null); } };
+$('#wbtn').onclick = () => { if (!me) return; closeFullView(); if (curView === 'board') openBoardWrite(null); else if (me.role !== 'admin' && me.approved) openWrite(null); };
 $('#wback').onclick = async () => {
   if ((pending.length || $('#rc').value.trim() !== (curRep?.content || '').trim() || $('#rt').value.trim() !== (curRep?.title || '').trim())
       && !(await askConfirm('작성 중인 내용이 저장되지 않습니다. 목록으로 갈까요?', '목록으로'))) return;
@@ -464,6 +470,117 @@ $('#arx').onclick = () => guard(async () => {
     toast('엑셀 파일을 저장했습니다');
   } finally { $('#arx').disabled = false; }
 });
+/* ---------- 게시판 ---------- */
+/* ---------- 화면 전환 (보고서 / 게시판) ---------- */
+function goView(v) {
+  curView = v; closeFullView();
+  if (v === 'board') { show('board'); showBoard('list'); guard(loadPosts); }
+  else if (me.role === 'admin') show('adminApp');
+  else { show('staffApp'); showStaff('list'); }
+  renderHeader(); window.scrollTo(0, 0);
+}
+$$('#nav button').forEach(b => (b.onclick = () => { if (me) goView(b.dataset.v); }));
+// 휴대폰 폭에서는 메뉴를 상단 바 밖(화면 아래 탭 바)으로 옮긴다 — 상단 바의 유리 효과가 fixed 기준을 가로채기 때문
+const navMq = window.matchMedia('(max-width: 640px)');
+function placeNav() { const nav = $('#nav'); if (navMq.matches) { if (nav.parentElement !== document.body) document.body.appendChild(nav); } else if (nav.parentElement === document.body) $('.top .in').insertBefore(nav, $('.topr')); }
+placeNav(); (navMq.addEventListener ? navMq.addEventListener('change', placeNav) : navMq.addListener(placeNav));
+
+/* ---------- 게시판 ---------- */
+let dir = [], posts = [], curPost = null, comments = [];
+const isAdmin = () => !!(me && me.role === 'admin');
+const dirName = id => (dir.find(p => p.id === id) || {}).name || (me && me.id === id ? me.name : '(알 수 없음)');
+const dirRole = id => (dir.find(p => p.id === id) || {}).role;
+function ago(iso) {
+  const d = new Date(iso), diff = (Date.now() - d.getTime()) / 1000;
+  if (diff < 60) return '방금';
+  if (diff < 3600) return `${Math.floor(diff / 60)}분 전`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}시간 전`;
+  const k = kst(iso), t = today();
+  if (k.slice(0, 10) === addDays(t, -1)) return '어제 ' + k.slice(11);
+  return (k.slice(0, 4) === t.slice(0, 4) ? md(k.slice(0, 10)) : k.slice(0, 10)) + ' ' + k.slice(11);
+}
+const whoHtml = (id, sub) => `<span class="avatar">${esc(initial(dirName(id)))}</span><span><b>${esc(dirName(id))}</b>${dirRole(id) === 'admin' ? ' <span class="pill ad">대표</span>' : ''}${sub ? `<span class="sub">${esc(sub)}</span>` : ''}</span>`;
+function showBoard(v) { ['list', 'view', 'write'].forEach(k => ($('#b' + k).hidden = k !== v)); window.scrollTo(0, 0); }
+async function loadDir() { dir = ok(await sb.rpc('staff_directory')) || []; }
+async function loadPosts() {
+  if (!dir.length) await loadDir();
+  posts = ok(await sb.from('posts').select('*, comments(count)').order('is_notice', { ascending: false }).order('created_at', { ascending: false }).limit(200));
+  $('#bcount').textContent = posts.length ? `글 ${posts.length}개` : '';
+  const chat = '<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>';
+  $('#plist').innerHTML = posts.length ? posts.map(p => {
+    const n = p.comments?.[0]?.count ?? 0;
+    return `<button class="card pcard${p.is_notice ? ' notice' : ''}" type="button" data-post="${p.id}">
+      <span class="pmain"><span class="ptitle">${p.is_notice ? '<span class="pill ac">공지</span>' : ''}<span>${esc(p.title)}</span></span>
+        <span class="psnip">${esc((p.content || '').replace(/\s+/g, ' ').slice(0, 120)) || '&nbsp;'}</span>
+        <span class="meta"><span class="who"><span class="avatar sm">${esc(initial(dirName(p.user_id)))}</span>${esc(dirName(p.user_id))}</span><span>${esc(ago(p.created_at))}</span></span></span>
+      <span class="cbubble${n ? ' has' : ''}">${chat}${n}</span></button>`;
+  }).join('') : `<div class="card empty"><span class="state-ic"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></span><h2 class="display">아직 글이 없습니다</h2><p class="mu m0">오른쪽 위 <b>글쓰기</b>로 첫 글을 남겨 보세요.</p></div>`;
+}
+$('#plist').addEventListener('click', e => { const b = e.target.closest('[data-post]'); if (b) guard(() => openPost(Number(b.dataset.post))); });
+async function openPost(id) {
+  const p = ok(await sb.from('posts').select('*').eq('id', id).maybeSingle());
+  if (!p) { toast('삭제된 글입니다'); return loadPosts(); }
+  curPost = p;
+  $('#bvt').innerHTML = (p.is_notice ? '<span class="pill ac" style="vertical-align:middle;margin-right:8px">공지</span>' : '') + esc(p.title);
+  $('#bvwho').innerHTML = whoHtml(p.user_id, ago(p.created_at) + (p.updated_at > p.created_at && kst(p.updated_at) !== kst(p.created_at) ? ' · 수정됨' : ''));
+  $('#bvc').textContent = p.content || '';
+  const mine = me.id === p.user_id;
+  $('#bvact').innerHTML = (mine ? '<button class="btn ghost sm" type="button" id="pedit">수정</button>' : '') + (mine || isAdmin() ? '<button class="btn ghost sm" type="button" id="pdel">삭제</button>' : '');
+  if (mine) $('#pedit').onclick = () => openBoardWrite(p);
+  if (mine || isAdmin()) $('#pdel').onclick = () => guard(async () => {
+    if (!(await askConfirm('이 글을 삭제할까요? 댓글도 함께 지워집니다.', '삭제', true))) return;
+    ok(await sb.from('posts').delete().eq('id', p.id)); toast('삭제했습니다'); showBoard('list'); await loadPosts();
+  });
+  $('#cin').value = '';
+  showBoard('view'); await loadComments();
+}
+async function loadComments() {
+  comments = ok(await sb.from('comments').select('*').eq('post_id', curPost.id).order('created_at'));
+  $('#bcc').textContent = comments.length || '';
+  $('#clist').innerHTML = comments.length ? comments.map(c => `<div class="citem"><span class="avatar sm">${esc(initial(dirName(c.user_id)))}</span>
+    <div class="cbody"><div class="chead"><b>${esc(dirName(c.user_id))}</b>${dirRole(c.user_id) === 'admin' ? '<span class="pill ad">대표</span>' : ''}<span>${esc(ago(c.created_at))}</span>${me.id === c.user_id || isAdmin() ? `<button class="link" type="button" data-cdel="${c.id}">삭제</button>` : ''}</div>
+    <div class="ctext">${esc(c.content)}</div></div></div>`).join('') : '<div class="cempty">첫 댓글을 남겨 보세요.</div>';
+}
+$('#clist').addEventListener('click', e => { const b = e.target.closest('[data-cdel]'); if (!b) return; guard(async () => {
+  if (!(await askConfirm('이 댓글을 삭제할까요?', '삭제', true))) return;
+  ok(await sb.from('comments').delete().eq('id', Number(b.dataset.cdel))); toast('삭제했습니다'); await loadComments();
+}); });
+async function sendComment() {
+  const t = $('#cin').value.trim(); if (!t) return $('#cin').focus();
+  $('#csend').disabled = true;
+  try { ok(await sb.from('comments').insert({ post_id: curPost.id, user_id: me.id, content: t })); $('#cin').value = ''; await loadComments(); toast('댓글을 남겼습니다'); }
+  finally { $('#csend').disabled = false; }
+}
+$('#csend').onclick = () => guard(sendComment);
+$('#cin').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); guard(sendComment); } });
+$('#bback').onclick = () => { showBoard('list'); guard(loadPosts); };
+let editPost = null;
+function openBoardWrite(p) {
+  editPost = p || null;
+  $('#bwt').textContent = p ? '글 수정' : '글쓰기';
+  $('#pt').value = p?.title || ''; $('#pc').value = p?.content || '';
+  $('#pnwrap').hidden = !isAdmin(); $('#pn').checked = !!p?.is_notice;
+  $('#psave').textContent = p ? '수정하기' : '등록하기';
+  showBoard('write'); $('#pt').focus();
+}
+$('#bwback').onclick = async () => {
+  if (($('#pt').value.trim() !== (editPost?.title || '') || $('#pc').value.trim() !== (editPost?.content || '')) && !(await askConfirm('작성 중인 내용이 저장되지 않습니다. 목록으로 갈까요?', '목록으로'))) return;
+  if (editPost) guard(() => openPost(editPost.id)); else { showBoard('list'); guard(loadPosts); }
+};
+$('#psave').onclick = () => guard(async () => {
+  const title = $('#pt').value.trim(), content = $('#pc').value.trim();
+  if (!title) { $('#pt').focus(); return toast('제목을 입력하세요'); }
+  if (!content) { $('#pc').focus(); return toast('내용을 입력하세요'); }
+  $('#psave').disabled = true;
+  try {
+    const row = { title, content, ...(isAdmin() ? { is_notice: $('#pn').checked } : {}) };
+    const saved = editPost
+      ? ok(await sb.from('posts').update(row).eq('id', editPost.id).select().single())
+      : ok(await sb.from('posts').insert({ ...row, user_id: me.id }).select().single());
+    toast(editPost ? '수정했습니다' : '글을 올렸습니다'); editPost = null; await openPost(saved.id);
+  } finally { $('#psave').disabled = false; }
+});
+
 /* ---------- 시작 ---------- */
 sb.auth.onAuthStateChange(ev => { if (ev === 'SIGNED_OUT' && me) { me = null; renderHeader(); show('lock'); } });
 guard(enter).then(() => { if ($('#boot').hidden === false && !me) show('lock'); });

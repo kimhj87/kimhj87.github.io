@@ -206,6 +206,89 @@ create policy "rf_delete" on storage.objects for delete to authenticated
   using (bucket_id = 'report-files'
          and ((storage.foldername(name))[1] = (select auth.uid())::text or public.is_admin()));
 
+
+-- ---------- 9. 게시판 ----------
+create table if not exists public.posts (
+  id          bigint generated always as identity primary key,
+  user_id     uuid not null references public.profiles(id) on delete cascade,
+  title       text not null,
+  content     text not null default '',
+  is_notice   boolean not null default false,        -- 대표만 켤 수 있음 (상단 고정)
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+create table if not exists public.comments (
+  id          bigint generated always as identity primary key,
+  post_id     bigint not null references public.posts(id) on delete cascade,
+  user_id     uuid not null references public.profiles(id) on delete cascade,
+  content     text not null,
+  created_at  timestamptz not null default now()
+);
+create index if not exists posts_created_idx on public.posts (created_at desc);
+create index if not exists posts_user_idx on public.posts (user_id);
+create index if not exists comments_post_idx on public.comments (post_id);
+create index if not exists comments_user_idx on public.comments (user_id);
+
+create or replace function public.posts_guard() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    if not is_admin() then new.user_id := auth.uid(); new.is_notice := false; end if;
+    new.created_at := now(); new.updated_at := now();
+  else
+    new.user_id := old.user_id; new.created_at := old.created_at;
+    if not is_admin() then new.is_notice := old.is_notice; end if;
+    if (new.title, new.content) is distinct from (old.title, old.content) then new.updated_at := now(); end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists posts_guard on public.posts;
+create trigger posts_guard before insert or update on public.posts for each row execute function public.posts_guard();
+
+create or replace function public.comments_guard() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    if not is_admin() then new.user_id := auth.uid(); end if;
+    new.created_at := now();
+  else
+    new.user_id := old.user_id; new.post_id := old.post_id; new.created_at := old.created_at;
+  end if;
+  return new;
+end $$;
+drop trigger if exists comments_guard on public.comments;
+create trigger comments_guard before insert or update on public.comments for each row execute function public.comments_guard();
+revoke execute on function public.posts_guard(), public.comments_guard() from public, anon, authenticated;
+
+-- 글쓴이 이름 표시용 (승인된 사람만, 이름·구분만 나감)
+create or replace function public.staff_directory() returns table (id uuid, name text, role text)
+language sql stable security definer set search_path = public as $$
+  select p.id, p.name, p.role from profiles p where is_active()
+$$;
+revoke all on function public.staff_directory() from public, anon;
+grant execute on function public.staff_directory() to authenticated;
+
+alter table public.posts enable row level security;
+alter table public.comments enable row level security;
+grant select, insert, update, delete on public.posts, public.comments to authenticated;
+revoke all on public.posts, public.comments from anon;
+
+drop policy if exists "posts_select" on public.posts;
+create policy "posts_select" on public.posts for select to authenticated using (is_active());
+drop policy if exists "posts_insert" on public.posts;
+create policy "posts_insert" on public.posts for insert to authenticated with check ((user_id = (select auth.uid()) and is_active()) or is_admin());
+drop policy if exists "posts_update" on public.posts;
+create policy "posts_update" on public.posts for update to authenticated
+  using ((user_id = (select auth.uid()) and is_active()) or is_admin()) with check ((user_id = (select auth.uid()) and is_active()) or is_admin());
+drop policy if exists "posts_delete" on public.posts;
+create policy "posts_delete" on public.posts for delete to authenticated using ((user_id = (select auth.uid()) and is_active()) or is_admin());
+drop policy if exists "comments_select" on public.comments;
+create policy "comments_select" on public.comments for select to authenticated using (is_active());
+drop policy if exists "comments_insert" on public.comments;
+create policy "comments_insert" on public.comments for insert to authenticated with check ((user_id = (select auth.uid()) and is_active()) or is_admin());
+drop policy if exists "comments_delete" on public.comments;
+create policy "comments_delete" on public.comments for delete to authenticated using ((user_id = (select auth.uid()) and is_active()) or is_admin());
+
 -- =====================================================================
 -- 대표 계정 지정 (사이트에서 대표님이 먼저 회원가입한 뒤 실행)
 --   update public.profiles set role = 'admin', approved = true
