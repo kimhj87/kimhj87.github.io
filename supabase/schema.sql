@@ -233,11 +233,11 @@ create or replace function public.posts_guard() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
   if tg_op = 'INSERT' then
-    if not is_admin() then new.user_id := auth.uid(); new.is_notice := false; end if;
-    new.created_at := now(); new.updated_at := now();
+    if not is_admin() then new.user_id := auth.uid(); new.is_notice := false; new.created_at := now(); end if;
+    new.updated_at := now();
   else
-    new.user_id := old.user_id; new.created_at := old.created_at;
-    if not is_admin() then new.is_notice := old.is_notice; end if;
+    new.user_id := old.user_id;
+    if not is_admin() then new.is_notice := old.is_notice; new.created_at := old.created_at; end if;   -- 대표는 쓴 날짜 수정 가능
     if (new.title, new.content) is distinct from (old.title, old.content) then new.updated_at := now(); end if;
   end if;
   return new;
@@ -249,10 +249,10 @@ create or replace function public.comments_guard() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
   if tg_op = 'INSERT' then
-    if not is_admin() then new.user_id := auth.uid(); end if;
-    new.created_at := now();
+    if not is_admin() then new.user_id := auth.uid(); new.created_at := now(); end if;
   else
-    new.user_id := old.user_id; new.post_id := old.post_id; new.created_at := old.created_at;
+    new.user_id := old.user_id; new.post_id := old.post_id;
+    if not is_admin() then new.created_at := old.created_at; end if;   -- 대표는 쓴 날짜 수정 가능
   end if;
   return new;
 end $$;
@@ -286,6 +286,8 @@ drop policy if exists "comments_select" on public.comments;
 create policy "comments_select" on public.comments for select to authenticated using (is_active());
 drop policy if exists "comments_insert" on public.comments;
 create policy "comments_insert" on public.comments for insert to authenticated with check ((user_id = (select auth.uid()) and is_active()) or is_admin());
+drop policy if exists "comments_update" on public.comments;
+create policy "comments_update" on public.comments for update to authenticated using (is_admin()) with check (is_admin());
 drop policy if exists "comments_delete" on public.comments;
 create policy "comments_delete" on public.comments for delete to authenticated using ((user_id = (select auth.uid()) and is_active()) or is_admin());
 

@@ -522,10 +522,11 @@ async function openPost(id) {
   if (!p) { toast('삭제된 글입니다'); return loadPosts(); }
   curPost = p;
   $('#bvt').innerHTML = (p.is_notice ? '<span class="pill ac" style="vertical-align:middle;margin-right:8px">공지</span>' : '') + esc(p.title);
-  $('#bvwho').innerHTML = whoHtml(p.user_id, ago(p.created_at) + (p.updated_at > p.created_at && kst(p.updated_at) !== kst(p.created_at) ? ' · 수정됨' : ''));
+  $('#bvwho').innerHTML = whoHtml(p.user_id, dt(p.created_at) + ' (' + ago(p.created_at) + ')');
   $('#bvc').textContent = p.content || '';
   const mine = me.id === p.user_id;
-  $('#bvact').innerHTML = (mine ? '<button class="btn ghost sm" type="button" id="pedit">수정</button>' : '') + (mine || isAdmin() ? '<button class="btn ghost sm" type="button" id="pdel">삭제</button>' : '');
+  $('#bvact').innerHTML = (isAdmin() ? '<button class="btn ghost sm" type="button" id="pdate">날짜 수정</button>' : '') + (mine ? '<button class="btn ghost sm" type="button" id="pedit">수정</button>' : '') + (mine || isAdmin() ? '<button class="btn ghost sm" type="button" id="pdel">삭제</button>' : '');
+  if (isAdmin()) $('#pdate').onclick = () => editStamp('글 쓴 날짜 수정', p.title, p.created_at, async iso => { ok(await sb.from('posts').update({ created_at: iso }).eq('id', p.id)); await openPost(p.id); });
   if (mine) $('#pedit').onclick = () => openBoardWrite(p);
   if (mine || isAdmin()) $('#pdel').onclick = () => guard(async () => {
     if (!(await askConfirm('이 글을 삭제할까요? 댓글도 함께 지워집니다.', '삭제', true))) return;
@@ -538,10 +539,13 @@ async function loadComments() {
   comments = ok(await sb.from('comments').select('*').eq('post_id', curPost.id).order('created_at'));
   $('#bcc').textContent = comments.length || '';
   $('#clist').innerHTML = comments.length ? comments.map(c => `<div class="citem"><span class="avatar sm">${esc(initial(dirName(c.user_id)))}</span>
-    <div class="cbody"><div class="chead"><b>${esc(dirName(c.user_id))}</b>${dirRole(c.user_id) === 'admin' ? '<span class="pill ad">대표</span>' : ''}<span>${esc(ago(c.created_at))}</span>${me.id === c.user_id || isAdmin() ? `<button class="link" type="button" data-cdel="${c.id}">삭제</button>` : ''}</div>
+    <div class="cbody"><div class="chead"><b>${esc(dirName(c.user_id))}</b>${dirRole(c.user_id) === 'admin' ? '<span class="pill ad">대표</span>' : ''}<span>${esc(ago(c.created_at))}</span>${isAdmin() ? `<button class="link" type="button" data-cdate="${c.id}">날짜 수정</button>` : ''}${me.id === c.user_id || isAdmin() ? `<button class="link" type="button" data-cdel="${c.id}">삭제</button>` : ''}</div>
     <div class="ctext">${esc(c.content)}</div></div></div>`).join('') : '<div class="cempty">첫 댓글을 남겨 보세요.</div>';
 }
-$('#clist').addEventListener('click', e => { const b = e.target.closest('[data-cdel]'); if (!b) return; guard(async () => {
+$('#clist').addEventListener('click', e => {
+  const d = e.target.closest('[data-cdate]');
+  if (d) { const c = comments.find(x => x.id === Number(d.dataset.cdate)); if (c) editStamp('댓글 쓴 날짜 수정', c.content.slice(0, 40), c.created_at, async iso => { ok(await sb.from('comments').update({ created_at: iso }).eq('id', c.id)); await loadComments(); }); return; }
+  const b = e.target.closest('[data-cdel]'); if (!b) return; guard(async () => {
   if (!(await askConfirm('이 댓글을 삭제할까요?', '삭제', true))) return;
   ok(await sb.from('comments').delete().eq('id', Number(b.dataset.cdel))); toast('삭제했습니다'); await loadComments();
 }); });
@@ -554,6 +558,25 @@ async function sendComment() {
 $('#csend').onclick = () => guard(sendComment);
 $('#cin').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); guard(sendComment); } });
 $('#bback').onclick = () => { showBoard('list'); guard(loadPosts); };
+/* 날짜·시각 수정 창 (대표 전용) */
+function editStamp(title, what, cur, onSave) {
+  openModal(`<h2>${esc(title)}</h2><p class="mu m0">${esc(what || '')}</p>
+    <form id="ef" class="fields" novalidate>
+      <div class="g2"><div><label for="evd">날짜</label><input type="date" id="evd" value="${toLocal(cur).slice(0, 10)}"></div>
+        <div><label for="evt">시각</label><input id="evt" class="mono" inputmode="numeric" value="${toLocal(cur).slice(11, 16)}" placeholder="09:00"></div></div>
+      <div class="row"><button class="btn ghost sm" type="button" data-q="0">오늘</button><button class="btn ghost sm" type="button" data-q="-1">어제</button><button class="btn ghost sm" type="button" data-q="-7">1주 전</button><span class="mu">시각은 숫자만 쳐도 됩니다. 예) 1730 → 17:30</span></div>
+      <p class="err" id="ee"></p>
+      <div class="row"><button class="btn ghost" type="button" data-close>취소</button><button class="btn" type="submit">저장</button></div>
+    </form>`);
+  $('#ef').querySelectorAll('button[data-q]').forEach(q => (q.onclick = () => { $('#evd').value = addDays(today(), Number(q.dataset.q)); }));
+  $('#ef').onsubmit = e => { e.preventDefault(); guard(async () => {
+    const d = $('#evd').value, t = parseTime($('#evt').value);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return ($('#ee').textContent = '날짜를 입력하세요.');
+    if (t === undefined) return ($('#ee').textContent = '시각을 확인하세요. 예) 900, 17:30');
+    await onSave(fromLocal(d + 'T' + (t || '09:00')));
+    closeModal(); toast('날짜를 바꿨습니다');
+  }); };
+}
 let editPost = null;
 function openBoardWrite(p) {
   editPost = p || null;
