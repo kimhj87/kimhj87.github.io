@@ -30,8 +30,8 @@ Supabase(DB·로그인·파일 저장)와 정적 웹호스팅만으로 돌아갑
 3. 새로고침하면 대표 화면(주간보고 / 직원)이 나옵니다.
 
 ## 3단계. 인터넷에 올리기 (완료 — GitHub Pages)
-- 사이트 주소: **https://kimhj87.github.io/staff-portal/**
-- 저장소: https://github.com/kimhj87/staff-portal (main 브랜치의 파일이 그대로 사이트가 됩니다)
+- 사이트 주소: **https://kimhj87.github.io/**
+- 저장소: https://github.com/kimhj87/kimhj87.github.io (main 브랜치의 파일이 그대로 사이트가 됩니다)
 - 코드를 고쳐서 main에 올리면 1분 안팎으로 사이트에 자동 반영됩니다.
 
 ---
