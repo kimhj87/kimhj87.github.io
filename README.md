@@ -29,21 +29,10 @@ Supabase(DB·로그인·파일 저장)와 정적 웹호스팅만으로 돌아갑
    ```
 3. 새로고침하면 대표 화면(주간보고 / 직원)이 나옵니다.
 
-## 3단계. 인터넷에 올리기 (Cloudflare Pages, 무료)
-1. GitHub에 **Private** 저장소를 만들고 이 폴더를 올립니다.
-   ```
-   git init
-   git add .
-   git commit -m "주간보고 사이트"
-   git branch -M main
-   git remote add origin https://github.com/<계정>/staff-portal.git
-   git push -u origin main
-   ```
-2. https://dash.cloudflare.com → **Workers & Pages → Create → Pages → Connect to Git**에서 저장소를 선택합니다.
-3. Framework preset은 **None**, Build command는 **비움**, Build output directory는 **`/`**로 두고 **Deploy**를 누릅니다.
-4. `https://staff-portal-xxx.pages.dev` 같은 주소가 나옵니다. 이 주소를 직원들에게 보내면 됩니다.
-5. 이후 코드를 고쳐서 `git push`하면 자동으로 다시 배포됩니다.
-6. (선택) 가진 도메인이 있으면 Pages → **Custom domains**에서 연결합니다.
+## 3단계. 인터넷에 올리기 (완료 — GitHub Pages)
+- 사이트 주소: **https://kimhj87.github.io/staff-portal/**
+- 저장소: https://github.com/kimhj87/staff-portal (main 브랜치의 파일이 그대로 사이트가 됩니다)
+- 코드를 고쳐서 main에 올리면 1분 안팎으로 사이트에 자동 반영됩니다.
 
 ---
 
