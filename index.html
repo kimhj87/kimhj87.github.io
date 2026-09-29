@@ -122,11 +122,13 @@
       <article class="card post">
         <div class="who" id="bvwho"></div>
         <div class="rep" id="bvc"></div>
+        <div class="files" id="bvfiles" hidden></div>
       </article>
       <section class="card">
         <h2>댓글 <span class="mu" id="bcc"></span></h2>
         <div id="clist" class="clist"></div>
-        <div class="cform"><textarea id="cin" rows="2" placeholder="댓글을 남기세요"></textarea><button class="btn" id="csend" type="button">등록</button></div>
+        <div class="files compact" id="cpend" hidden></div>
+        <div class="cform"><label class="btn ghost sm cattach" for="cff" title="파일 첨부"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.5 12.6 21a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2L10 18.4a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg></label><input type="file" id="cff" multiple hidden><textarea id="cin" rows="2" placeholder="댓글을 남기세요"></textarea><button class="btn" id="csend" type="button">등록</button></div>
       </section>
     </section>
 
@@ -136,6 +138,13 @@
         <div class="fields">
           <div><label for="pt">제목</label><input id="pt" class="title-in" maxlength="120" placeholder="제목"></div>
           <div><label for="pc">내용</label><textarea id="pc" rows="12" placeholder="내용을 쓰세요."></textarea></div>
+          <div class="attach">
+            <div class="hd"><span class="lbl">첨부 파일</span><span class="mu">여러 개 가능 · 파일당 50MB 이하</span></div>
+            <div class="files" id="bmyfiles"></div>
+            <div class="files" id="bpending"></div>
+            <span class="mu" id="bnofile">첨부한 파일이 없습니다.</span>
+            <label class="btn ghost sm filebtn" for="bff"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>파일 추가</label><input type="file" id="bff" multiple hidden>
+          </div>
           <label class="check" id="pnwrap" hidden><input type="checkbox" id="pn"><span>공지로 상단에 고정</span></label>
         </div>
         <div class="submitbar"><button class="btn lg" id="psave" type="button">등록하기</button></div>

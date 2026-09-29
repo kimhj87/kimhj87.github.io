@@ -291,6 +291,59 @@ create policy "comments_update" on public.comments for update to authenticated u
 drop policy if exists "comments_delete" on public.comments;
 create policy "comments_delete" on public.comments for delete to authenticated using ((user_id = (select auth.uid()) and is_active()) or is_admin());
 
+
+-- 게시판 첨부 파일 (글 또는 댓글에 붙음)
+create table if not exists public.board_files (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references public.profiles(id) on delete cascade,
+  post_id     bigint references public.posts(id) on delete cascade,
+  comment_id  bigint references public.comments(id) on delete cascade,
+  name        text not null,
+  size        bigint not null default 0,
+  path        text not null unique,
+  created_at  timestamptz not null default now(),
+  check (((post_id is not null)::int + (comment_id is not null)::int) = 1)
+);
+create index if not exists board_files_post_idx on public.board_files (post_id);
+create index if not exists board_files_comment_idx on public.board_files (comment_id);
+create or replace function public.board_files_guard() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_admin() then new.user_id := auth.uid(); end if;
+  new.created_at := now();
+  return new;
+end $$;
+drop trigger if exists board_files_guard on public.board_files;
+create trigger board_files_guard before insert on public.board_files for each row execute function public.board_files_guard();
+revoke execute on function public.board_files_guard() from public, anon, authenticated;
+alter table public.board_files enable row level security;
+grant select, insert, delete on public.board_files to authenticated;
+revoke all on public.board_files from anon;
+drop policy if exists "bf_select" on public.board_files;
+create policy "bf_select" on public.board_files for select to authenticated using (is_active());
+drop policy if exists "bf_insert" on public.board_files;
+create policy "bf_insert" on public.board_files for insert to authenticated
+  with check (is_admin() or (user_id = (select auth.uid()) and is_active() and (
+      (post_id is not null and exists (select 1 from public.posts p where p.id = post_id and p.user_id = (select auth.uid())))
+   or (comment_id is not null and exists (select 1 from public.comments c where c.id = comment_id and c.user_id = (select auth.uid()))))));
+drop policy if exists "bf_delete" on public.board_files;
+create policy "bf_delete" on public.board_files for delete to authenticated
+  using ((user_id = (select auth.uid()) and is_active()) or is_admin());
+
+-- 게시판 파일 저장소: 승인된 직원은 모두 볼 수 있음, 올리기는 본인 폴더에만
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('board-files', 'board-files', false, 52428800)
+on conflict (id) do update set public = false, file_size_limit = 52428800;
+drop policy if exists "bf_st_insert" on storage.objects;
+create policy "bf_st_insert" on storage.objects for insert to authenticated
+  with check (bucket_id = 'board-files' and (storage.foldername(name))[1] = (select auth.uid())::text and public.is_active());
+drop policy if exists "bf_st_select" on storage.objects;
+create policy "bf_st_select" on storage.objects for select to authenticated
+  using (bucket_id = 'board-files' and public.is_active());
+drop policy if exists "bf_st_delete" on storage.objects;
+create policy "bf_st_delete" on storage.objects for delete to authenticated
+  using (bucket_id = 'board-files' and ((storage.foldername(name))[1] = (select auth.uid())::text or public.is_admin()));
+
 -- =====================================================================
 -- 대표 계정 지정 (사이트에서 대표님이 먼저 회원가입한 뒤 실행)
 --   update public.profiles set role = 'admin', approved = true

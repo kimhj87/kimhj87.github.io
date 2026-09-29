@@ -306,9 +306,15 @@ body.noscroll{overflow:hidden}
 .chead b{color:var(--tx);font-size:14px}
 .chead .link{margin-left:auto;color:var(--mu);font-size:12.5px;font-weight:500}
 .ctext{white-space:pre-wrap;overflow-wrap:anywhere;font-size:15px;line-height:1.6}
-.cform{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end;padding-top:6px}
+.cform{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:end;padding-top:6px}
+.cattach{width:48px;height:48px;padding:0;border-radius:14px;justify-content:center}
+.files.compact .file{padding:6px 10px;gap:8px}
+.files.compact .ext{width:30px;height:30px;font-size:9px}
+.files.compact .nm{font-size:13.5px}
+.clip{display:inline-flex;align-items:center;gap:3px}
+.clip svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .cform textarea{min-height:48px;border-radius:14px}
 .check{display:flex;align-items:center;gap:10px;font-weight:500;cursor:pointer;margin:0}
 .check input{width:20px;height:20px;accent-color:var(--ac);margin:0}
 .cempty{color:var(--mu);font-size:14px;padding:14px 4px}
-@media (max-width:560px){.pcard{padding:16px 18px}.post{padding:22px 20px}.cform{grid-template-columns:1fr}.cform .btn{width:100%}}
+@media (max-width:560px){.pcard{padding:16px 18px}.post{padding:22px 20px}.cform{grid-template-columns:auto minmax(0,1fr)}.cform .btn:not(.cattach){grid-column:1/-1;width:100%}}

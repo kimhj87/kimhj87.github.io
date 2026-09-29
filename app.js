@@ -31,7 +31,8 @@ const recentWeeks = n => { const w0 = monday(today()); return Array.from({ lengt
 const size = b => (b < 1024 ? b + ' B' : b < 1048576 ? Math.round(b / 1024) + ' KB' : (b / 1048576).toFixed(1) + ' MB');
 const fromLocal = v => new Date(v + ':00+09:00').toISOString();   // datetime-local(한국시간) → ISO
 const toLocal = iso => kst(iso || new Date()).replace(' ', 'T');
-const BUCKET = 'report-files';
+const BUCKET = 'report-files', BOARD_BUCKET = 'board-files';
+const bucketOf = f => f.bucket || BUCKET;
 const MAXB = MAX_FILE_MB * 1024 * 1024;
 const email = id => `${id}@${ID_DOMAIN}`;
 
@@ -245,14 +246,24 @@ $('#ff').onchange = () => {
   pending.push(...add.filter(f => f.size <= MAXB)); $('#ff').value = ''; renderAttach();
 };
 $('#pending').addEventListener('click', e => { const b = e.target.closest('[data-px]'); if (!b) return; pending.splice(Number(b.dataset.px), 1); renderAttach(); });
-async function uploadOne(f, reportId) {
+async function putFile(bucket, f) {   // 저장소에 올리고 경로를 돌려줌
   const ext = ((f.name.split('.').pop() || '').toLowerCase().replace(/[^a-z0-9]/g, '')) || 'bin';
   const rid = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
   const path = `${me.id}/${rid}.${ext}`;
-  ok(await sb.storage.from(BUCKET).upload(path, f, { contentType: f.type || 'application/octet-stream', upsert: false }));
+  ok(await sb.storage.from(bucket).upload(path, f, { contentType: f.type || 'application/octet-stream', upsert: false }));
+  return path;
+}
+async function uploadOne(f, reportId) {
+  const path = await putFile(BUCKET, f);
   const ins = await sb.from('report_files').insert({ user_id: me.id, report_id: reportId, name: f.name, size: f.size, path });
   if (ins.error) { await sb.storage.from(BUCKET).remove([path]); throw ins.error; }
 }
+function pickFiles(input) {   // 파일 선택창 결과에서 크기 넘는 것 걸러내기
+  const add = [...input.files], big = add.filter(f => f.size > MAXB);
+  if (big.length) toast(`${big.map(f => f.name).join(', ')}: ${MAX_FILE_MB}MB를 넘어서 뺐습니다`);
+  input.value = ''; return add.filter(f => f.size <= MAXB);
+}
+const pendHtml = (f, i, attr) => { const x = extInfo(f.name); return `<div class="file pend"><span class="ext ${x.cls}">${x.label}</span><span class="nm">${esc(f.name)}</span><span class="meta">${size(f.size)}</span><button class="btn ghost sm" type="button" ${attr}="${i}">빼기</button></div>`; };
 $('#save').onclick = () => guard(async () => {
   const title = $('#rt').value.trim(), rdate = $('#rd').value, content = $('#rc').value.trim();
   if (!title) { $('#rt').focus(); return toast('제목을 입력하세요'); }
@@ -315,14 +326,14 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#fv').
 /* ---------- 파일 ---------- */
 function fileHtml(f, mode) {
   fileMap[f.id] = f;
-  const extra = mode === 'staff' ? `<button class="btn ghost sm" type="button" data-fx="${f.id}">삭제</button>` : '';
+  const extra = mode === 'staff' ? `<button class="btn ghost sm" type="button" data-fx="${f.id}">삭제</button>` : mode === 'bedit' ? `<button class="btn ghost sm" type="button" data-bx="${f.id}">삭제</button>` : '';
   const x = extInfo(f.name);
   return `<div class="file"><span class="ext ${x.cls}">${x.label}</span><span class="nm">${esc(f.name)}</span>
     <span class="meta">${size(f.size)}</span>
     <span class="fbtns"><button class="btn ghost sm" type="button" data-vw="${f.id}">보기</button><button class="btn ghost sm" type="button" data-dl="${f.id}">받기</button>${extra}</span></div>`;
 }
 async function download(f) {
-  const d = ok(await sb.storage.from(BUCKET).createSignedUrl(f.path, 120, { download: f.name }));
+  const d = ok(await sb.storage.from(bucketOf(f)).createSignedUrl(f.path, 120, { download: f.name }));
   const a = document.createElement('a'); a.href = d.signedUrl; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
 }
 document.addEventListener('click', e => {
@@ -331,7 +342,7 @@ document.addEventListener('click', e => {
     const f = fileMap[b.dataset.vw]; if (!f) return;
     const w = window.open('', '_blank');
     guard(async () => {
-      try { const d = ok(await sb.storage.from(BUCKET).createSignedUrl(f.path, 600)); if (w) w.location.href = d.signedUrl; else location.href = d.signedUrl; }
+      try { const d = ok(await sb.storage.from(bucketOf(f)).createSignedUrl(f.path, 600)); if (w) w.location.href = d.signedUrl; else location.href = d.signedUrl; }
       catch (err) { if (w) w.close(); throw err; }
     });
   }
@@ -486,7 +497,8 @@ function placeNav() { const nav = $('#nav'); if (navMq.matches) { if (nav.parent
 placeNav(); (navMq.addEventListener ? navMq.addEventListener('change', placeNav) : navMq.addListener(placeNav));
 
 /* ---------- 게시판 ---------- */
-let dir = [], posts = [], curPost = null, comments = [];
+let dir = [], posts = [], curPost = null, comments = [], postFiles = [], bpending = [], bfiles = [], cpending = [];
+const tagBoard = f => Object.assign(f, { bucket: BOARD_BUCKET });
 const isAdmin = () => !!(me && me.role === 'admin');
 const dirName = id => (dir.find(p => p.id === id) || {}).name || (me && me.id === id ? me.name : '(알 수 없음)');
 const dirRole = id => (dir.find(p => p.id === id) || {}).role;
@@ -504,15 +516,15 @@ function showBoard(v) { ['list', 'view', 'write'].forEach(k => ($('#b' + k).hidd
 async function loadDir() { dir = ok(await sb.rpc('staff_directory')) || []; }
 async function loadPosts() {
   if (!dir.length) await loadDir();
-  posts = ok(await sb.from('posts').select('*, comments(count)').order('is_notice', { ascending: false }).order('created_at', { ascending: false }).limit(200));
+  posts = ok(await sb.from('posts').select('*, comments(count), board_files(count)').order('is_notice', { ascending: false }).order('created_at', { ascending: false }).limit(200));
   $('#bcount').textContent = posts.length ? `글 ${posts.length}개` : '';
   const chat = '<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>';
   $('#plist').innerHTML = posts.length ? posts.map(p => {
-    const n = p.comments?.[0]?.count ?? 0;
+    const n = p.comments?.[0]?.count ?? 0, fn = p.board_files?.[0]?.count ?? 0;
     return `<button class="card pcard${p.is_notice ? ' notice' : ''}" type="button" data-post="${p.id}">
       <span class="pmain"><span class="ptitle">${p.is_notice ? '<span class="pill ac">공지</span>' : ''}<span>${esc(p.title)}</span></span>
         <span class="psnip">${esc((p.content || '').replace(/\s+/g, ' ').slice(0, 120)) || '&nbsp;'}</span>
-        <span class="meta"><span class="who"><span class="avatar sm">${esc(initial(dirName(p.user_id)))}</span>${esc(dirName(p.user_id))}</span><span>${esc(ago(p.created_at))}</span></span></span>
+        <span class="meta"><span class="who"><span class="avatar sm">${esc(initial(dirName(p.user_id)))}</span>${esc(dirName(p.user_id))}</span><span>${esc(ago(p.created_at))}</span>${fn ? `<span class="clip"><svg viewBox="0 0 24 24"><path d="M21 12.5 12.6 21a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2L10 18.4a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg>${fn}</span>` : ''}</span></span>
       <span class="cbubble${n ? ' has' : ''}">${chat}${n}</span></button>`;
   }).join('') : `<div class="card empty"><span class="state-ic"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></span><h2 class="display">아직 글이 없습니다</h2><p class="mu m0">오른쪽 위 <b>글쓰기</b>로 첫 글을 남겨 보세요.</p></div>`;
 }
@@ -524,36 +536,60 @@ async function openPost(id) {
   $('#bvt').innerHTML = (p.is_notice ? '<span class="pill ac" style="vertical-align:middle;margin-right:8px">공지</span>' : '') + esc(p.title);
   $('#bvwho').innerHTML = whoHtml(p.user_id, dt(p.created_at) + ' (' + ago(p.created_at) + ')');
   $('#bvc').textContent = p.content || '';
+  postFiles = (ok(await sb.from('board_files').select('*').eq('post_id', p.id).order('created_at')) || []).map(tagBoard);
+  $('#bvfiles').innerHTML = postFiles.length ? postFiles.map(f => fileHtml(f, 'view')).join('') : '';
+  $('#bvfiles').hidden = !postFiles.length;
   const mine = me.id === p.user_id;
   $('#bvact').innerHTML = (isAdmin() ? '<button class="btn ghost sm" type="button" id="pdate">날짜 수정</button>' : '') + (mine ? '<button class="btn ghost sm" type="button" id="pedit">수정</button>' : '') + (mine || isAdmin() ? '<button class="btn ghost sm" type="button" id="pdel">삭제</button>' : '');
   if (isAdmin()) $('#pdate').onclick = () => editStamp('글 쓴 날짜 수정', p.title, p.created_at, async iso => { ok(await sb.from('posts').update({ created_at: iso }).eq('id', p.id)); await openPost(p.id); });
   if (mine) $('#pedit').onclick = () => openBoardWrite(p);
   if (mine || isAdmin()) $('#pdel').onclick = () => guard(async () => {
-    if (!(await askConfirm('이 글을 삭제할까요? 댓글도 함께 지워집니다.', '삭제', true))) return;
-    ok(await sb.from('posts').delete().eq('id', p.id)); toast('삭제했습니다'); showBoard('list'); await loadPosts();
+    if (!(await askConfirm('이 글을 삭제할까요? 댓글과 첨부 파일도 함께 지워집니다.', '삭제', true))) return;
+    const cids = comments.map(c => c.id);
+    const fs = [...postFiles, ...(cids.length ? (ok(await sb.from('board_files').select('path').in('comment_id', cids)) || []) : [])];
+    ok(await sb.from('posts').delete().eq('id', p.id));
+    if (fs.length) await sb.storage.from(BOARD_BUCKET).remove(fs.map(f => f.path));
+    toast('삭제했습니다'); showBoard('list'); await loadPosts();
   });
-  $('#cin').value = '';
+  $('#cin').value = ''; cpending = []; renderCPending();
   showBoard('view'); await loadComments();
 }
 async function loadComments() {
   comments = ok(await sb.from('comments').select('*').eq('post_id', curPost.id).order('created_at'));
+  const cf = comments.length ? (ok(await sb.from('board_files').select('*').in('comment_id', comments.map(c => c.id)).order('created_at')) || []).map(tagBoard) : [];
+  const cfiles = id => cf.filter(f => f.comment_id === id);
   $('#bcc').textContent = comments.length || '';
   $('#clist').innerHTML = comments.length ? comments.map(c => `<div class="citem"><span class="avatar sm">${esc(initial(dirName(c.user_id)))}</span>
     <div class="cbody"><div class="chead"><b>${esc(dirName(c.user_id))}</b>${dirRole(c.user_id) === 'admin' ? '<span class="pill ad">대표</span>' : ''}<span>${esc(ago(c.created_at))}</span>${isAdmin() ? `<button class="link" type="button" data-cdate="${c.id}">날짜 수정</button>` : ''}${me.id === c.user_id || isAdmin() ? `<button class="link" type="button" data-cdel="${c.id}">삭제</button>` : ''}</div>
-    <div class="ctext">${esc(c.content)}</div></div></div>`).join('') : '<div class="cempty">첫 댓글을 남겨 보세요.</div>';
+    <div class="ctext">${esc(c.content)}</div>${cfiles(c.id).length ? `<div class="files compact">${cfiles(c.id).map(f => fileHtml(f, 'view')).join('')}</div>` : ''}</div></div>`).join('') : '<div class="cempty">첫 댓글을 남겨 보세요.</div>';
 }
 $('#clist').addEventListener('click', e => {
   const d = e.target.closest('[data-cdate]');
   if (d) { const c = comments.find(x => x.id === Number(d.dataset.cdate)); if (c) editStamp('댓글 쓴 날짜 수정', c.content.slice(0, 40), c.created_at, async iso => { ok(await sb.from('comments').update({ created_at: iso }).eq('id', c.id)); await loadComments(); }); return; }
   const b = e.target.closest('[data-cdel]'); if (!b) return; guard(async () => {
   if (!(await askConfirm('이 댓글을 삭제할까요?', '삭제', true))) return;
-  ok(await sb.from('comments').delete().eq('id', Number(b.dataset.cdel))); toast('삭제했습니다'); await loadComments();
+  const cid = Number(b.dataset.cdel), fs = ok(await sb.from('board_files').select('path').eq('comment_id', cid)) || [];
+  ok(await sb.from('comments').delete().eq('id', cid));
+  if (fs.length) await sb.storage.from(BOARD_BUCKET).remove(fs.map(f => f.path));
+  toast('삭제했습니다'); await loadComments();
 }); });
+function renderCPending() { $('#cpend').innerHTML = cpending.map((f, i) => pendHtml(f, i, 'data-cpx')).join(''); $('#cpend').hidden = !cpending.length; }
+$('#cff').onchange = () => { cpending.push(...pickFiles($('#cff'))); renderCPending(); };
+$('#cpend').addEventListener('click', e => { const b = e.target.closest('[data-cpx]'); if (!b) return; cpending.splice(Number(b.dataset.cpx), 1); renderCPending(); });
 async function sendComment() {
-  const t = $('#cin').value.trim(); if (!t) return $('#cin').focus();
+  const t = $('#cin').value.trim(); if (!t && !cpending.length) return $('#cin').focus();
   $('#csend').disabled = true;
-  try { ok(await sb.from('comments').insert({ post_id: curPost.id, user_id: me.id, content: t })); $('#cin').value = ''; await loadComments(); toast('댓글을 남겼습니다'); }
-  finally { $('#csend').disabled = false; }
+  try {
+    const c = ok(await sb.from('comments').insert({ post_id: curPost.id, user_id: me.id, content: t || '(파일 첨부)' }).select().single());
+    while (cpending.length) {
+      const f = cpending[0]; $('#csend').textContent = `올리는 중… ${f.name}`;
+      const path = await putFile(BOARD_BUCKET, f);
+      const ins = await sb.from('board_files').insert({ user_id: me.id, comment_id: c.id, name: f.name, size: f.size, path });
+      if (ins.error) { await sb.storage.from(BOARD_BUCKET).remove([path]); throw ins.error; }
+      cpending.shift(); renderCPending();
+    }
+    $('#cin').value = ''; await loadComments(); toast('댓글을 남겼습니다');
+  } finally { $('#csend').disabled = false; $('#csend').textContent = '등록'; }
 }
 $('#csend').onclick = () => guard(sendComment);
 $('#cin').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); guard(sendComment); } });
@@ -578,8 +614,20 @@ function editStamp(title, what, cur, onSave) {
   }); };
 }
 let editPost = null;
+function renderBAttach() {
+  $('#bmyfiles').innerHTML = bfiles.map(f => fileHtml(f, 'bedit')).join('');
+  $('#bpending').innerHTML = bpending.map((f, i) => pendHtml(f, i, 'data-bpx')).join('');
+  $('#bnofile').hidden = !!(bfiles.length || bpending.length);
+}
+$('#bff').onchange = () => { bpending.push(...pickFiles($('#bff'))); renderBAttach(); };
+$('#bpending').addEventListener('click', e => { const b = e.target.closest('[data-bpx]'); if (!b) return; bpending.splice(Number(b.dataset.bpx), 1); renderBAttach(); });
+$('#bmyfiles').addEventListener('click', e => { const b = e.target.closest('[data-bx]'); if (!b) return; const f = bfiles.find(x => x.id === b.dataset.bx); if (!f) return; guard(async () => {
+  if (!(await askConfirm(`"${f.name}" 파일을 삭제할까요?`, '삭제', true))) return;
+  ok(await sb.from('board_files').delete().eq('id', f.id)); await sb.storage.from(BOARD_BUCKET).remove([f.path]);
+  bfiles = bfiles.filter(x => x.id !== f.id); renderBAttach(); toast('삭제했습니다');
+}); });
 function openBoardWrite(p) {
-  editPost = p || null;
+  editPost = p || null; bpending = []; bfiles = p ? postFiles.slice() : []; renderBAttach();
   $('#bwt').textContent = p ? '글 수정' : '글쓰기';
   $('#pt').value = p?.title || ''; $('#pc').value = p?.content || '';
   $('#pnwrap').hidden = !isAdmin(); $('#pn').checked = !!p?.is_notice;
@@ -587,7 +635,7 @@ function openBoardWrite(p) {
   showBoard('write'); $('#pt').focus();
 }
 $('#bwback').onclick = async () => {
-  if (($('#pt').value.trim() !== (editPost?.title || '') || $('#pc').value.trim() !== (editPost?.content || '')) && !(await askConfirm('작성 중인 내용이 저장되지 않습니다. 목록으로 갈까요?', '목록으로'))) return;
+  if ((bpending.length || $('#pt').value.trim() !== (editPost?.title || '') || $('#pc').value.trim() !== (editPost?.content || '')) && !(await askConfirm('작성 중인 내용이 저장되지 않습니다. 목록으로 갈까요?', '목록으로'))) return;
   if (editPost) guard(() => openPost(editPost.id)); else { showBoard('list'); guard(loadPosts); }
 };
 $('#psave').onclick = () => guard(async () => {
@@ -597,11 +645,20 @@ $('#psave').onclick = () => guard(async () => {
   $('#psave').disabled = true;
   try {
     const row = { title, content, ...(isAdmin() ? { is_notice: $('#pn').checked } : {}) };
+    $('#psave').textContent = '저장 중…';
     const saved = editPost
       ? ok(await sb.from('posts').update(row).eq('id', editPost.id).select().single())
       : ok(await sb.from('posts').insert({ ...row, user_id: me.id }).select().single());
-    toast(editPost ? '수정했습니다' : '글을 올렸습니다'); editPost = null; await openPost(saved.id);
-  } finally { $('#psave').disabled = false; }
+    editPost = saved;
+    while (bpending.length) {
+      const f = bpending[0]; $('#psave').textContent = `파일 올리는 중… ${f.name}`;
+      const path = await putFile(BOARD_BUCKET, f);
+      const ins = await sb.from('board_files').insert({ user_id: me.id, post_id: saved.id, name: f.name, size: f.size, path });
+      if (ins.error) { await sb.storage.from(BOARD_BUCKET).remove([path]); throw ins.error; }
+      bpending.shift(); renderBAttach();
+    }
+    toast(saved.updated_at === saved.created_at ? '글을 올렸습니다' : '저장했습니다'); editPost = null; await openPost(saved.id);
+  } finally { $('#psave').disabled = false; $('#psave').textContent = editPost ? '수정하기' : '등록하기'; }
 });
 
 /* ---------- 시작 ---------- */
