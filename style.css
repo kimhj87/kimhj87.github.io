@@ -224,6 +224,17 @@ tbody tr:last-child td{border-bottom:0}
 .pill.no{background:var(--warns);color:var(--warn)}
 .pill.ad{background:var(--acs);color:var(--ac)}
 .pill.ac{background:var(--ac);color:#fff}
+.pill.lk{background:var(--line2);color:var(--tx2)}
+.ext.lk{background:var(--line2);color:var(--tx2);font-size:15px}
+/* 비밀번호 잠금 */
+.lockopt{border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:grid;gap:12px;background:var(--fill)}
+.lockopt .g2{gap:10px}
+.lockbox{display:grid;justify-items:center;text-align:center;gap:8px;padding:34px 16px}
+.lockbox .lockic{font-size:40px;line-height:1}
+.lockbox b{font-size:17px}
+.lockbox .urow{display:flex;gap:8px;width:100%;max-width:320px;margin-top:6px}
+.lockbox .urow input{flex:1}
+.lockbox .err{min-height:1em;color:var(--warn)}
 
 /* ---------- 전체화면 ---------- */
 body.noscroll{overflow:hidden}

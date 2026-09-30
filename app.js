@@ -36,6 +36,46 @@ const bucketOf = f => f.bucket || BUCKET;
 const MAXB = MAX_FILE_MB * 1024 * 1024;
 const email = id => `${id}@${ID_DOMAIN}`;
 
+/* ---------- 비밀번호 잠금(암호화) ----------
+   글 본문과 첨부파일을 비밀번호에서 뽑은 키로 AES-GCM 암호화한다.
+   비밀번호는 어디에도 저장하지 않는다(서버엔 암호문만). 잊으면 복구 불가. */
+const te = new TextEncoder(), tdc = new TextDecoder();
+const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function deriveKey(pw, salt) {
+  const base = await crypto.subtle.importKey('raw', te.encode(pw), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 200000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function encContent(key, salt, str) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, te.encode(str));
+  return JSON.stringify({ v: 1, salt: b64(salt), iv: b64(iv), ct: b64(ct) });
+}
+async function openContent(pw, bundleStr) {   // 비밀번호로 본문 복호화 → {text, key, salt}
+  const b = JSON.parse(bundleStr), salt = unb64(b.salt), key = await deriveKey(pw, salt);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(b.iv) }, key, unb64(b.ct));
+  return { text: tdc.decode(pt), key, salt };
+}
+async function encFileBlob(key, file) {   // 파일명·형식을 앞에 붙여 통째로 암호화 → iv(12)+암호문 Blob
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const head = te.encode(JSON.stringify({ name: file.name, type: file.type || '' }));
+  const hl = new Uint8Array(4); new DataView(hl.buffer).setUint32(0, head.length);
+  const body = new Uint8Array(await file.arrayBuffer());
+  const plain = new Uint8Array(4 + head.length + body.length);
+  plain.set(hl, 0); plain.set(head, 4); plain.set(body, 4 + head.length);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plain));
+  const out = new Uint8Array(12 + ct.length); out.set(iv, 0); out.set(ct, 12);
+  return new Blob([out], { type: 'application/octet-stream' });
+}
+async function decFileBlob(key, blob) {   // → {name, type, blob}
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  const iv = buf.slice(0, 12);
+  const plain = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, buf.slice(12)));
+  const hl = new DataView(plain.buffer, plain.byteOffset, 4).getUint32(0);
+  const head = JSON.parse(tdc.decode(plain.slice(4, 4 + hl)));
+  return { name: head.name, type: head.type, blob: new Blob([plain.slice(4 + hl)], { type: head.type || 'application/octet-stream' }) };
+}
+
 $('#brand').textContent = SITE_NAME;
 $('#fname').textContent = SITE_NAME;
 document.title = SITE_NAME;
@@ -327,12 +367,20 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#fv').
 function fileHtml(f, mode) {
   fileMap[f.id] = f;
   const extra = mode === 'staff' ? `<button class="btn ghost sm" type="button" data-fx="${f.id}">삭제</button>` : mode === 'bedit' ? `<button class="btn ghost sm" type="button" data-bx="${f.id}">삭제</button>` : '';
-  const x = extInfo(f.name);
+  const x = f.enc ? { cls: 'lk', label: '🔒' } : extInfo(f.name);
   return `<div class="file"><span class="ext ${x.cls}">${x.label}</span><span class="nm">${esc(f.name)}</span>
     <span class="meta">${size(f.size)}</span>
     <span class="fbtns"><button class="btn ghost sm" type="button" data-vw="${f.id}">보기</button><button class="btn ghost sm" type="button" data-dl="${f.id}">받기</button>${extra}</span></div>`;
 }
 async function download(f) {
+  if (f.enc) {
+    if (!unlock.key || unlock.postId !== curPost?.id) return toast('먼저 비밀번호로 글을 여세요');
+    const blob = ok(await sb.storage.from(bucketOf(f)).download(f.path));
+    const dec = await decFileBlob(unlock.key, blob);
+    const url = URL.createObjectURL(dec.blob), a = document.createElement('a');
+    a.href = url; a.download = dec.name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000); return;
+  }
   const d = ok(await sb.storage.from(bucketOf(f)).createSignedUrl(f.path, 120, { download: f.name }));
   const a = document.createElement('a'); a.href = d.signedUrl; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
 }
@@ -340,10 +388,18 @@ document.addEventListener('click', e => {
   const b = e.target.closest('button[data-vw],button[data-dl],button[data-fx],button[data-fv]'); if (!b) return;
   if (b.dataset.vw) {
     const f = fileMap[b.dataset.vw]; if (!f) return;
+    if (f.enc && (!unlock.key || unlock.postId !== curPost?.id)) return toast('먼저 비밀번호로 글을 여세요');
     const w = window.open('', '_blank');
     guard(async () => {
-      try { const d = ok(await sb.storage.from(bucketOf(f)).createSignedUrl(f.path, 600)); if (w) w.location.href = d.signedUrl; else location.href = d.signedUrl; }
-      catch (err) { if (w) w.close(); throw err; }
+      try {
+        let url;
+        if (f.enc) {
+          const blob = ok(await sb.storage.from(bucketOf(f)).download(f.path));
+          const dec = await decFileBlob(unlock.key, blob);
+          url = URL.createObjectURL(dec.blob); setTimeout(() => URL.revokeObjectURL(url), 60000);
+        } else { url = ok(await sb.storage.from(bucketOf(f)).createSignedUrl(f.path, 600)).signedUrl; }
+        if (w) w.location.href = url; else location.href = url;
+      } catch (err) { if (w) w.close(); throw err; }
     });
   }
   else if (b.dataset.dl) { const f = fileMap[b.dataset.dl]; if (f) guard(() => download(f)); }
@@ -498,6 +554,7 @@ placeNav(); (navMq.addEventListener ? navMq.addEventListener('change', placeNav)
 
 /* ---------- 게시판 ---------- */
 let dir = [], posts = [], curPost = null, comments = [], postFiles = [], bpending = [], bfiles = [], cpending = [];
+let unlock = { postId: null, key: null, salt: null, plain: '' };   // 이 세션에서 열어둔 잠긴 글
 const tagBoard = f => Object.assign(f, { bucket: BOARD_BUCKET });
 const isAdmin = () => !!(me && me.role === 'admin');
 const dirName = id => (dir.find(p => p.id === id) || {}).name || (me && me.id === id ? me.name : '(알 수 없음)');
@@ -522,8 +579,8 @@ async function loadPosts() {
   $('#plist').innerHTML = posts.length ? posts.map(p => {
     const n = p.comments?.[0]?.count ?? 0, fn = p.board_files?.[0]?.count ?? 0;
     return `<button class="card pcard${p.is_notice ? ' notice' : ''}" type="button" data-post="${p.id}">
-      <span class="pmain"><span class="ptitle">${p.is_notice ? '<span class="pill ac">공지</span>' : ''}<span>${esc(p.title)}</span></span>
-        <span class="psnip">${esc((p.content || '').replace(/\s+/g, ' ').slice(0, 120)) || '&nbsp;'}</span>
+      <span class="pmain"><span class="ptitle">${p.is_notice ? '<span class="pill ac">공지</span>' : ''}${p.locked ? '<span class="pill lk">🔒 잠금</span>' : ''}<span>${esc(p.title)}</span></span>
+        <span class="psnip">${p.locked ? '<span class="mu">비밀번호로 잠긴 글입니다</span>' : esc((p.content || '').replace(/\s+/g, ' ').slice(0, 120)) || '&nbsp;'}</span>
         <span class="meta"><span class="who"><span class="avatar sm">${esc(initial(dirName(p.user_id)))}</span>${esc(dirName(p.user_id))}</span><span>${esc(ago(p.created_at))}</span>${fn ? `<span class="clip"><svg viewBox="0 0 24 24"><path d="M21 12.5 12.6 21a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2L10 18.4a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg>${fn}</span>` : ''}</span></span>
       <span class="cbubble${n ? ' has' : ''}">${chat}${n}</span></button>`;
   }).join('') : `<div class="card empty"><span class="state-ic"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></span><h2 class="display">아직 글이 없습니다</h2><p class="mu m0">오른쪽 위 <b>글쓰기</b>로 첫 글을 남겨 보세요.</p></div>`;
@@ -533,26 +590,54 @@ async function openPost(id) {
   const p = ok(await sb.from('posts').select('*').eq('id', id).maybeSingle());
   if (!p) { toast('삭제된 글입니다'); return loadPosts(); }
   curPost = p;
-  $('#bvt').innerHTML = (p.is_notice ? '<span class="pill ac" style="vertical-align:middle;margin-right:8px">공지</span>' : '') + esc(p.title);
+  const opened = !p.locked || unlock.postId === p.id;
+  const mine = me.id === p.user_id;
+  $('#bvt').innerHTML = (p.is_notice ? '<span class="pill ac" style="vertical-align:middle;margin-right:8px">공지</span>' : '')
+    + (p.locked ? '<span class="pill lk" style="vertical-align:middle;margin-right:8px">🔒 잠금</span>' : '') + esc(p.title);
   $('#bvwho').innerHTML = whoHtml(p.user_id, dt(p.created_at) + ' (' + ago(p.created_at) + ')');
-  $('#bvc').textContent = p.content || '';
+  $('#bvact').innerHTML = (isAdmin() ? '<button class="btn ghost sm" type="button" id="pdate">날짜 수정</button>' : '')
+    + (mine && opened ? '<button class="btn ghost sm" type="button" id="pedit">수정</button>' : '')
+    + (mine || isAdmin() ? '<button class="btn ghost sm" type="button" id="pdel">삭제</button>' : '');
+  if (isAdmin()) $('#pdate').onclick = () => editStamp('글 쓴 날짜 수정', p.title, p.created_at, async iso => { ok(await sb.from('posts').update({ created_at: iso }).eq('id', p.id)); await openPost(p.id); });
+  if (mine && opened) $('#pedit').onclick = () => openBoardWrite(p);
+  if (mine || isAdmin()) $('#pdel').onclick = () => guard(async () => {
+    if (!(await askConfirm('이 글을 삭제할까요? 댓글과 첨부 파일도 함께 지워집니다.', '삭제', true))) return;
+    const cids = ok(await sb.from('comments').select('id').eq('post_id', p.id)) || [];
+    const pf = ok(await sb.from('board_files').select('path').eq('post_id', p.id)) || [];
+    const cf = cids.length ? (ok(await sb.from('board_files').select('path').in('comment_id', cids.map(c => c.id))) || []) : [];
+    const paths = [...pf, ...cf].map(f => f.path);
+    ok(await sb.from('posts').delete().eq('id', p.id));
+    if (paths.length) await sb.storage.from(BOARD_BUCKET).remove(paths);
+    toast('삭제했습니다'); showBoard('list'); await loadPosts();
+  });
+  showBoard('view');
+  if (opened) await revealPost(p); else renderLocked(p);
+}
+async function revealPost(p) {
+  $('#bvc').textContent = p.locked ? unlock.plain : (p.content || '');
   postFiles = (ok(await sb.from('board_files').select('*').eq('post_id', p.id).order('created_at')) || []).map(tagBoard);
   $('#bvfiles').innerHTML = postFiles.length ? postFiles.map(f => fileHtml(f, 'view')).join('') : '';
   $('#bvfiles').hidden = !postFiles.length;
-  const mine = me.id === p.user_id;
-  $('#bvact').innerHTML = (isAdmin() ? '<button class="btn ghost sm" type="button" id="pdate">날짜 수정</button>' : '') + (mine ? '<button class="btn ghost sm" type="button" id="pedit">수정</button>' : '') + (mine || isAdmin() ? '<button class="btn ghost sm" type="button" id="pdel">삭제</button>' : '');
-  if (isAdmin()) $('#pdate').onclick = () => editStamp('글 쓴 날짜 수정', p.title, p.created_at, async iso => { ok(await sb.from('posts').update({ created_at: iso }).eq('id', p.id)); await openPost(p.id); });
-  if (mine) $('#pedit').onclick = () => openBoardWrite(p);
-  if (mine || isAdmin()) $('#pdel').onclick = () => guard(async () => {
-    if (!(await askConfirm('이 글을 삭제할까요? 댓글과 첨부 파일도 함께 지워집니다.', '삭제', true))) return;
-    const cids = comments.map(c => c.id);
-    const fs = [...postFiles, ...(cids.length ? (ok(await sb.from('board_files').select('path').in('comment_id', cids)) || []) : [])];
-    ok(await sb.from('posts').delete().eq('id', p.id));
-    if (fs.length) await sb.storage.from(BOARD_BUCKET).remove(fs.map(f => f.path));
-    toast('삭제했습니다'); showBoard('list'); await loadPosts();
-  });
+  $('#bcmt').hidden = false;
   $('#cin').value = ''; cpending = []; renderCPending();
-  showBoard('view'); await loadComments();
+  await loadComments();
+}
+function renderLocked(p) {
+  postFiles = []; $('#bvfiles').hidden = true; $('#bvfiles').innerHTML = ''; $('#bcmt').hidden = true;
+  $('#bvc').innerHTML = `<div class="lockbox"><div class="lockic">🔒</div>
+    <b>비밀번호로 잠긴 글입니다</b>
+    <p class="mu m0">이 글과 첨부파일은 비밀번호를 아는 사람만 볼 수 있습니다.</p>
+    <form id="uf" class="urow" novalidate><input id="upw" type="password" placeholder="비밀번호" autocomplete="off"><button class="btn" type="submit">열기</button></form>
+    <p class="err m0" id="ue"></p></div>`;
+  $('#uf').onsubmit = e => { e.preventDefault(); guard(async () => {
+    const pw = $('#upw').value; if (!pw) return;
+    $('#ue').textContent = '여는 중…';
+    let r; try { r = await openContent(pw, p.enc); }
+    catch (_) { $('#ue').textContent = '비밀번호가 맞지 않습니다.'; $('#upw').select(); return; }
+    unlock = { postId: p.id, key: r.key, salt: r.salt, plain: r.text };
+    await openPost(p.id);
+  }); };
+  $('#upw').focus();
 }
 async function loadComments() {
   comments = ok(await sb.from('comments').select('*').eq('post_id', curPost.id).order('created_at'));
@@ -626,11 +711,25 @@ $('#bmyfiles').addEventListener('click', e => { const b = e.target.closest('[dat
   ok(await sb.from('board_files').delete().eq('id', f.id)); await sb.storage.from(BOARD_BUCKET).remove([f.path]);
   bfiles = bfiles.filter(x => x.id !== f.id); renderBAttach(); toast('삭제했습니다');
 }); });
+function updateLockUI() {
+  const on = $('#plock').checked, reuse = !!(editPost && editPost.locked);
+  $('#pwwrap').hidden = !on || reuse;
+  $('#pwnote').hidden = !on;
+  $('#pwnote').textContent = reuse
+    ? '이 글은 잠겨 있습니다. 기존 비밀번호가 그대로 유지됩니다.'
+    : '이 비밀번호를 아는 사람만 글과 첨부파일을 볼 수 있습니다. 비밀번호를 잊으면 되돌릴 수 없습니다.';
+}
+$('#plock').onchange = updateLockUI;
 function openBoardWrite(p) {
   editPost = p || null; bpending = []; bfiles = p ? postFiles.slice() : []; renderBAttach();
   $('#bwt').textContent = p ? '글 수정' : '글쓰기';
-  $('#pt').value = p?.title || ''; $('#pc').value = p?.content || '';
+  $('#pt').value = p?.title || '';
+  $('#pc').value = p ? (p.locked ? unlock.plain : (p.content || '')) : '';
   $('#pnwrap').hidden = !isAdmin(); $('#pn').checked = !!p?.is_notice;
+  const editingLocked = !!(p && p.locked), canLock = !p;   // 잠금 선택은 새 글만, 수정 중엔 상태 고정
+  $('#plockrow').hidden = !(canLock || editingLocked);
+  $('#plock').checked = editingLocked; $('#plock').disabled = !canLock;
+  $('#ppw').value = ''; $('#ppw2').value = ''; updateLockUI();
   $('#psave').textContent = p ? '수정하기' : '등록하기';
   showBoard('write'); $('#pt').focus();
 }
@@ -641,19 +740,45 @@ $('#bwback').onclick = async () => {
 $('#psave').onclick = () => guard(async () => {
   const title = $('#pt').value.trim(), content = $('#pc').value.trim();
   if (!title) { $('#pt').focus(); return toast('제목을 입력하세요'); }
-  if (!content) { $('#pc').focus(); return toast('내용을 입력하세요'); }
+  if (!content && !bpending.length && !bfiles.length) { $('#pc').focus(); return toast('내용을 입력하세요'); }
+
+  const locked = $('#plock').checked;
+  let key = null, salt = null, enc = null;
+  if (locked) {
+    if (editPost && editPost.locked) {   // 기존 잠긴 글 수정: 비밀번호 재사용
+      if (!unlock.key || unlock.postId !== editPost.id) return toast('먼저 비밀번호로 글을 열어야 수정할 수 있습니다');
+      key = unlock.key; salt = unlock.salt;
+    } else {   // 새 잠금: 비밀번호 두 번 확인
+      const pw = $('#ppw').value, pw2 = $('#ppw2').value;
+      if (pw.length < 4) { $('#ppw').focus(); return toast('비밀번호는 4자 이상으로 정하세요'); }
+      if (pw !== pw2) { $('#ppw2').focus(); return toast('비밀번호가 서로 다릅니다'); }
+      salt = crypto.getRandomValues(new Uint8Array(16)); key = await deriveKey(pw, salt);
+    }
+    enc = await encContent(key, salt, content);
+  }
+
   $('#psave').disabled = true;
   try {
-    const row = { title, content, ...(isAdmin() ? { is_notice: $('#pn').checked } : {}) };
+    const row = locked
+      ? { title, content: '', locked: true, enc, ...(isAdmin() ? { is_notice: $('#pn').checked } : {}) }
+      : { title, content, ...(isAdmin() ? { is_notice: $('#pn').checked } : {}) };
     $('#psave').textContent = '저장 중…';
     const saved = editPost
       ? ok(await sb.from('posts').update(row).eq('id', editPost.id).select().single())
       : ok(await sb.from('posts').insert({ ...row, user_id: me.id }).select().single());
     editPost = saved;
+    if (locked) unlock = { postId: saved.id, key, salt, plain: content };   // 방금 만든/고친 글은 열린 상태로
     while (bpending.length) {
       const f = bpending[0]; $('#psave').textContent = `파일 올리는 중… ${f.name}`;
-      const path = await putFile(BOARD_BUCKET, f);
-      const ins = await sb.from('board_files').insert({ user_id: me.id, post_id: saved.id, name: f.name, size: f.size, path });
+      let path, ins;
+      if (locked) {
+        const blob = await encFileBlob(key, f);
+        path = await putFile(BOARD_BUCKET, new File([blob], 'enc.bin', { type: 'application/octet-stream' }));
+        ins = await sb.from('board_files').insert({ user_id: me.id, post_id: saved.id, name: '🔒 잠긴 첨부파일', size: f.size, path, enc: true });
+      } else {
+        path = await putFile(BOARD_BUCKET, f);
+        ins = await sb.from('board_files').insert({ user_id: me.id, post_id: saved.id, name: f.name, size: f.size, path });
+      }
       if (ins.error) { await sb.storage.from(BOARD_BUCKET).remove([path]); throw ins.error; }
       bpending.shift(); renderBAttach();
     }

@@ -214,6 +214,8 @@ create table if not exists public.posts (
   title       text not null,
   content     text not null default '',
   is_notice   boolean not null default false,        -- 대표만 켤 수 있음 (상단 고정)
+  locked      boolean not null default false,        -- 비밀번호 잠금 글(본문·첨부 암호화)
+  enc         text,                                  -- 잠긴 글 본문 암호문(JSON: salt/iv/ct). 비밀번호는 저장 안 함
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
@@ -301,6 +303,7 @@ create table if not exists public.board_files (
   name        text not null,
   size        bigint not null default 0,
   path        text not null unique,
+  enc         boolean not null default false,        -- true면 저장소 객체가 암호문(iv||암호문), 원본 파일명은 그 안에 있음
   created_at  timestamptz not null default now(),
   check (((post_id is not null)::int + (comment_id is not null)::int) = 1)
 );

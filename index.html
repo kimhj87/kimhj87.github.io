@@ -124,7 +124,7 @@
         <div class="rep" id="bvc"></div>
         <div class="files" id="bvfiles" hidden></div>
       </article>
-      <section class="card">
+      <section class="card" id="bcmt">
         <h2>댓글 <span class="mu" id="bcc"></span></h2>
         <div id="clist" class="clist"></div>
         <div class="files compact" id="cpend" hidden></div>
@@ -144,6 +144,16 @@
             <div class="files" id="bpending"></div>
             <span class="mu" id="bnofile">첨부한 파일이 없습니다.</span>
             <label class="btn ghost sm filebtn" for="bff"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>파일 추가</label><input type="file" id="bff" multiple hidden>
+          </div>
+          <div class="lockopt" id="plockrow" hidden>
+            <label class="check"><input type="checkbox" id="plock"><span>🔒 비밀번호 잠금 — 월급명세서 등 민감 자료를 비밀번호 아는 사람만 보게</span></label>
+            <div id="pwwrap" hidden>
+              <div class="g2">
+                <div><label for="ppw">비밀번호</label><input id="ppw" type="password" autocomplete="new-password" placeholder="4자 이상"></div>
+                <div><label for="ppw2">비밀번호 확인</label><input id="ppw2" type="password" autocomplete="new-password"></div>
+              </div>
+            </div>
+            <p class="mu m0" id="pwnote" hidden></p>
           </div>
           <label class="check" id="pnwrap" hidden><input type="checkbox" id="pn"><span>공지로 상단에 고정</span></label>
         </div>
