@@ -29,8 +29,6 @@ function weekName(m) {
 }
 const recentWeeks = n => { const w0 = monday(today()); return Array.from({ length: n }, (_, i) => addDays(w0, -7 * i)); };
 const size = b => (b < 1024 ? b + ' B' : b < 1048576 ? Math.round(b / 1024) + ' KB' : (b / 1048576).toFixed(1) + ' MB');
-const fromLocal = v => new Date(v + ':00+09:00').toISOString();   // datetime-local(한국시간) → ISO
-const toLocal = iso => kst(iso || new Date()).replace(' ', 'T');
 const BUCKET = 'report-files', BOARD_BUCKET = 'board-files';
 const bucketOf = f => f.bucket || BUCKET;
 const MAXB = MAX_FILE_MB * 1024 * 1024;
@@ -255,7 +253,6 @@ function openWrite(r) {
   curRep = r || null; pending = [];
   $('#wtitle').textContent = r ? '보고서 수정' : '보고서 작성';
   $('#rt').value = r?.title || '';
-  $('#rd').value = r?.report_date || today();
   $('#rc').value = r?.content || '';
   $('#save').textContent = r ? '수정해서 제출하기' : '제출하기';
   curFiles = r ? myFiles.filter(f => f.report_id === r.id) : [];
@@ -279,7 +276,6 @@ $('#wback').onclick = async () => {
       && !(await askConfirm('작성 중인 내용이 저장되지 않습니다. 목록으로 갈까요?', '목록으로'))) return;
   showStaff('list');
 };
-$$('#swrite button[data-rq]').forEach(b => (b.onclick = () => { $('#rd').value = addDays(today(), Number(b.dataset.rq)); }));
 $('#ff').onchange = () => {
   const add = [...$('#ff').files], big = add.filter(f => f.size > MAXB);
   if (big.length) toast(`${big.map(f => f.name).join(', ')}: ${MAX_FILE_MB}MB를 넘어서 뺐습니다`);
@@ -305,9 +301,9 @@ function pickFiles(input) {   // 파일 선택창 결과에서 크기 넘는 것
 }
 const pendHtml = (f, i, attr) => { const x = extInfo(f.name); return `<div class="file pend"><span class="ext ${x.cls}">${x.label}</span><span class="nm">${esc(f.name)}</span><span class="meta">${size(f.size)}</span><button class="btn ghost sm" type="button" ${attr}="${i}">빼기</button></div>`; };
 $('#save').onclick = () => guard(async () => {
-  const title = $('#rt').value.trim(), rdate = $('#rd').value, content = $('#rc').value.trim();
+  const title = $('#rt').value.trim(), content = $('#rc').value.trim();
+  const rdate = curRep ? curRep.report_date : today();   // 제출일은 자동(처음 올린 날). 직원이 지정하지 않음
   if (!title) { $('#rt').focus(); return toast('제목을 입력하세요'); }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(rdate) || rdate < addDays(today(), -730) || rdate > addDays(today(), 31)) { $('#rd').focus(); return toast('제출 날짜를 확인하세요 (최근 2년 ~ 한 달 뒤까지)'); }
   if (!content && !pending.length && !curFiles.length) { $('#rc').focus(); return toast('이번 주 한 일을 쓰거나 파일을 첨부하세요'); }
   $('#save').disabled = true;
   try {
@@ -437,20 +433,9 @@ async function loadStaff() {
   })));
 }
 
-/* ---------- 대표: 주간보고 (제출 날짜별 전체 목록) — 직원이 지정한 날짜(report_date)를 제출일로 표시 ---------- */
+/* ---------- 대표: 주간보고 (제출일별 전체 목록) — 직원이 올린 날(report_date)을 제출일로 표시 ---------- */
 const WD = ['일', '월', '화', '수', '목', '금', '토'];
 const wday = d => WD[new Date(d + 'T00:00:00Z').getUTCDay()];
-// "9" "900" "0930" "9:30" "18:05" → "HH:MM" / 빈칸 → null / 잘못된 값 → undefined
-function parseTime(v) {
-  v = String(v || '').trim().replace(/[^0-9:]/g, '');
-  if (!v) return null;
-  let h, m;
-  if (v.includes(':')) [h, m] = v.split(':').map(x => Number(x || 0));
-  else if (v.length <= 2) { h = Number(v); m = 0; }
-  else { h = Number(v.slice(0, -2)); m = Number(v.slice(-2)); }
-  if (!Number.isInteger(h) || !Number.isInteger(m) || h < 0 || h > 23 || m < 0 || m > 59) return undefined;
-  return pad(h) + ':' + pad(m);
-}
 const allStaff = () => people.filter(p => p.role !== 'admin').sort((a, b) => a.name.localeCompare(b.name, 'ko'));
 const person = id => people.find(x => x.id === id) || {};
 let allReps = [], allFiles = [];
@@ -595,10 +580,8 @@ async function openPost(id) {
   $('#bvt').innerHTML = (p.is_notice ? '<span class="pill ac" style="vertical-align:middle;margin-right:8px">공지</span>' : '')
     + (p.locked ? '<span class="pill lk" style="vertical-align:middle;margin-right:8px">🔒 잠금</span>' : '') + esc(p.title);
   $('#bvwho').innerHTML = whoHtml(p.user_id, dt(p.created_at) + ' (' + ago(p.created_at) + ')');
-  $('#bvact').innerHTML = (isAdmin() ? '<button class="btn ghost sm" type="button" id="pdate">날짜 수정</button>' : '')
-    + (mine && opened ? '<button class="btn ghost sm" type="button" id="pedit">수정</button>' : '')
+  $('#bvact').innerHTML = (mine && opened ? '<button class="btn ghost sm" type="button" id="pedit">수정</button>' : '')
     + (mine || isAdmin() ? '<button class="btn ghost sm" type="button" id="pdel">삭제</button>' : '');
-  if (isAdmin()) $('#pdate').onclick = () => editStamp('글 쓴 날짜 수정', p.title, p.created_at, async iso => { ok(await sb.from('posts').update({ created_at: iso }).eq('id', p.id)); await openPost(p.id); });
   if (mine && opened) $('#pedit').onclick = () => openBoardWrite(p);
   if (mine || isAdmin()) $('#pdel').onclick = () => guard(async () => {
     if (!(await askConfirm('이 글을 삭제할까요? 댓글과 첨부 파일도 함께 지워집니다.', '삭제', true))) return;
@@ -645,12 +628,10 @@ async function loadComments() {
   const cfiles = id => cf.filter(f => f.comment_id === id);
   $('#bcc').textContent = comments.length || '';
   $('#clist').innerHTML = comments.length ? comments.map(c => `<div class="citem"><span class="avatar sm">${esc(initial(dirName(c.user_id)))}</span>
-    <div class="cbody"><div class="chead"><b>${esc(dirName(c.user_id))}</b>${dirRole(c.user_id) === 'admin' ? '<span class="pill ad">대표</span>' : ''}<span>${esc(ago(c.created_at))}</span>${isAdmin() ? `<button class="link" type="button" data-cdate="${c.id}">날짜 수정</button>` : ''}${me.id === c.user_id || isAdmin() ? `<button class="link" type="button" data-cdel="${c.id}">삭제</button>` : ''}</div>
+    <div class="cbody"><div class="chead"><b>${esc(dirName(c.user_id))}</b>${dirRole(c.user_id) === 'admin' ? '<span class="pill ad">대표</span>' : ''}<span>${esc(ago(c.created_at))}</span>${me.id === c.user_id || isAdmin() ? `<button class="link" type="button" data-cdel="${c.id}">삭제</button>` : ''}</div>
     <div class="ctext">${esc(c.content)}</div>${cfiles(c.id).length ? `<div class="files compact">${cfiles(c.id).map(f => fileHtml(f, 'view')).join('')}</div>` : ''}</div></div>`).join('') : '<div class="cempty">첫 댓글을 남겨 보세요.</div>';
 }
 $('#clist').addEventListener('click', e => {
-  const d = e.target.closest('[data-cdate]');
-  if (d) { const c = comments.find(x => x.id === Number(d.dataset.cdate)); if (c) editStamp('댓글 쓴 날짜 수정', c.content.slice(0, 40), c.created_at, async iso => { ok(await sb.from('comments').update({ created_at: iso }).eq('id', c.id)); await loadComments(); }); return; }
   const b = e.target.closest('[data-cdel]'); if (!b) return; guard(async () => {
   if (!(await askConfirm('이 댓글을 삭제할까요?', '삭제', true))) return;
   const cid = Number(b.dataset.cdel), fs = ok(await sb.from('board_files').select('path').eq('comment_id', cid)) || [];
@@ -679,25 +660,6 @@ async function sendComment() {
 $('#csend').onclick = () => guard(sendComment);
 $('#cin').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); guard(sendComment); } });
 $('#bback').onclick = () => { showBoard('list'); guard(loadPosts); };
-/* 날짜·시각 수정 창 (대표 전용) */
-function editStamp(title, what, cur, onSave) {
-  openModal(`<h2>${esc(title)}</h2><p class="mu m0">${esc(what || '')}</p>
-    <form id="ef" class="fields" novalidate>
-      <div class="g2"><div><label for="evd">날짜</label><input type="date" id="evd" value="${toLocal(cur).slice(0, 10)}"></div>
-        <div><label for="evt">시각</label><input id="evt" class="mono" inputmode="numeric" value="${toLocal(cur).slice(11, 16)}" placeholder="09:00"></div></div>
-      <div class="row"><button class="btn ghost sm" type="button" data-q="0">오늘</button><button class="btn ghost sm" type="button" data-q="-1">어제</button><button class="btn ghost sm" type="button" data-q="-7">1주 전</button><span class="mu">시각은 숫자만 쳐도 됩니다. 예) 1730 → 17:30</span></div>
-      <p class="err" id="ee"></p>
-      <div class="row"><button class="btn ghost" type="button" data-close>취소</button><button class="btn" type="submit">저장</button></div>
-    </form>`);
-  $('#ef').querySelectorAll('button[data-q]').forEach(q => (q.onclick = () => { $('#evd').value = addDays(today(), Number(q.dataset.q)); }));
-  $('#ef').onsubmit = e => { e.preventDefault(); guard(async () => {
-    const d = $('#evd').value, t = parseTime($('#evt').value);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return ($('#ee').textContent = '날짜를 입력하세요.');
-    if (t === undefined) return ($('#ee').textContent = '시각을 확인하세요. 예) 900, 17:30');
-    await onSave(fromLocal(d + 'T' + (t || '09:00')));
-    closeModal(); toast('날짜를 바꿨습니다');
-  }); };
-}
 let editPost = null;
 function renderBAttach() {
   $('#bmyfiles').innerHTML = bfiles.map(f => fileHtml(f, 'bedit')).join('');

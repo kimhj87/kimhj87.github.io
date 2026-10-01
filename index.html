@@ -63,7 +63,7 @@
     </div>
 
     <ul class="feats">
-      <li><span class="fi"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h9"/></svg></span><b>한 화면에서 작성</b><span>제목, 제출 날짜, 이번 주 한 일을 한 번에 씁니다.</span></li>
+      <li><span class="fi"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h9"/></svg></span><b>한 화면에서 작성</b><span>제목과 이번 주 한 일을 한 번에 씁니다.</span></li>
       <li><span class="fi"><svg viewBox="0 0 24 24"><path d="M21 12.5 12.6 21a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2L10 18.4a1.8 1.8 0 0 1-2.6-2.6l7.8-7.8"/></svg></span><b>파일과 함께 제출</b><span>한글, PDF, 엑셀, 이미지를 파일당 50MB까지 첨부합니다.</span></li>
       <li><span class="fi"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span><b>날짜별로 한눈에</b><span>대표 화면에서 날짜별로 모아 보고, 엑셀로 내려받습니다.</span></li>
     </ul>
@@ -94,8 +94,6 @@
       <div class="card form">
         <div class="fields">
           <div><label for="rt">제목</label><input id="rt" class="title-in" maxlength="100" placeholder="예) 10월 1주차 주간보고"></div>
-          <div><label for="rd">제출 날짜</label>
-            <div class="row" style="align-items:center;gap:8px"><input type="date" id="rd" class="auto"><button class="btn ghost sm" type="button" data-rq="0">오늘</button><button class="btn ghost sm" type="button" data-rq="-1">어제</button><button class="btn ghost sm" type="button" data-rq="-7">1주 전</button></div></div>
           <div><label for="rc">이번 주 한 일</label><textarea id="rc" rows="14" placeholder="이번 주에 한 일, 다음 주 계획, 요청사항 등을 한 번에 자유롭게 쓰세요."></textarea></div>
           <div class="attach">
             <div class="hd"><span class="lbl">첨부 파일</span><span class="mu" id="flimit"></span></div>

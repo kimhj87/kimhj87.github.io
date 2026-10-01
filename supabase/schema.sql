@@ -33,7 +33,7 @@ create table if not exists public.reports (
   id            bigint generated always as identity primary key,
   user_id       uuid not null references public.profiles(id) on delete cascade,
   title         text not null default '',
-  report_date   date not null default ((now() at time zone 'Asia/Seoul')::date),  -- 직원이 지정하는 보고 날짜
+  report_date   date not null default ((now() at time zone 'Asia/Seoul')::date),  -- 제출일(서버가 자동 지정, 직원이 바꿀 수 없음)
   content       text not null default '',                                          -- 이번 주 한 일
   submitted_at  timestamptz not null default now(),  -- 제출일 (대표가 수정 가능)
   updated_at    timestamptz not null default now()
@@ -92,14 +92,16 @@ begin
     if not is_admin() then
       new.user_id := auth.uid();
       new.submitted_at := now();
+      new.report_date := (now() at time zone 'Asia/Seoul')::date;   -- 제출일은 서버가 정함(직원 지정 불가)
     end if;
     new.updated_at := now();
   else
     if not is_admin() then
       new.user_id := old.user_id;
       new.submitted_at := old.submitted_at;
+      new.report_date := old.report_date;   -- 제출일은 수정 불가
     end if;
-    if (new.title, new.content, new.report_date) is distinct from (old.title, old.content, old.report_date) then
+    if (new.title, new.content) is distinct from (old.title, old.content) then
       new.updated_at := now();
     end if;
   end if;
@@ -239,7 +241,8 @@ begin
     new.updated_at := now();
   else
     new.user_id := old.user_id;
-    if not is_admin() then new.is_notice := old.is_notice; new.created_at := old.created_at; end if;   -- 대표는 쓴 날짜 수정 가능
+    new.created_at := old.created_at;   -- 글 쓴 날짜는 아무도 못 바꿈
+    if not is_admin() then new.is_notice := old.is_notice; end if;   -- 공지 고정은 대표만
     if (new.title, new.content) is distinct from (old.title, old.content) then new.updated_at := now(); end if;
   end if;
   return new;
@@ -254,7 +257,7 @@ begin
     if not is_admin() then new.user_id := auth.uid(); new.created_at := now(); end if;
   else
     new.user_id := old.user_id; new.post_id := old.post_id;
-    if not is_admin() then new.created_at := old.created_at; end if;   -- 대표는 쓴 날짜 수정 가능
+    new.created_at := old.created_at;   -- 댓글 쓴 날짜는 아무도 못 바꿈
   end if;
   return new;
 end $$;
